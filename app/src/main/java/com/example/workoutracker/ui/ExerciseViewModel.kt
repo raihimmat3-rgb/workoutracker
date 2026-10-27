@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.workoutracker.data.AppDatabase
 import com.example.workoutracker.data.ExerciseEntity
+import com.example.workoutracker.data.seedHevyExercises
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -60,5 +61,10 @@ class ExerciseViewModel(application: Application) : AndroidViewModel(application
             )
             onResult(if (id == -1L) "An exercise with that name already exists" else null)
         }
+    }
+
+    /** TEMPORARY: loads the exercises found in the Hevy export. Safe to tap more than once. */
+    fun loadHevyExercises() {
+        viewModelScope.launch { seedHevyExercises(dao) }
     }
 }
