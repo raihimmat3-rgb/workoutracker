@@ -13,6 +13,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.workoutracker.ui.theme.WorkoutrackerTheme
 import com.example.workoutracker.ui.HistoryScreen
+import com.example.workoutracker.ui.MainScreen
+import com.example.workoutracker.ui.ExercisesScreen
+import com.example.workoutracker.ui.ExerciseViewModel
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -20,7 +23,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             WorkoutrackerTheme {
-                HistoryScreen()
+                MainScreen()
             }
         }
     }
