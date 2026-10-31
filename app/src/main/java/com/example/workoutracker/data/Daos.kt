@@ -41,18 +41,32 @@ interface WorkoutDao {
     @Insert
     suspend fun insertSets(sets: List<WorkoutSetEntity>)
 
+    /** Returns how many rows were updated (1 if it worked, 0 if no workout had that id). */
     @Update
-    suspend fun updateWorkout(workout: WorkoutEntity)
+    suspend fun updateWorkout(workout: WorkoutEntity): Int
 
-    /** Cascades to the workout's exercises and sets. */
+    /** Cascades to the workout's exercises and sets. Returns how many workouts were deleted. */
     @Query("DELETE FROM workout WHERE id = :id")
-    suspend fun deleteWorkout(id: Long)
+    suspend fun deleteWorkout(id: Long): Int
 
     @Query("SELECT EXISTS(SELECT 1 FROM workout WHERE startedAt = :startedAt)")
     suspend fun existsByStartedAt(startedAt: Long): Boolean
 
-    /** Newest first, for the history list. */
-    @Query("SELECT * FROM workout ORDER BY startedAt DESC")
+    @Query("SELECT * FROM workout WHERE id = :id")
+    suspend fun getById(id: Long): WorkoutEntity?
+
+    @Query("SELECT * FROM workout WHERE id = :id")
+    fun observeById(id: Long): Flow<WorkoutEntity?>
+
+    /** The workout currently in progress (endedAt is still null), if there is one. */
+    @Query("SELECT * FROM workout WHERE endedAt IS NULL ORDER BY startedAt DESC LIMIT 1")
+    fun observeActive(): Flow<WorkoutEntity?>
+
+    @Query("SELECT * FROM workout WHERE endedAt IS NULL ORDER BY startedAt DESC LIMIT 1")
+    suspend fun getActive(): WorkoutEntity?
+
+    /** Finished workouts only, newest first, for the history list. */
+    @Query("SELECT * FROM workout WHERE endedAt IS NOT NULL ORDER BY startedAt DESC")
     fun observeHistory(): Flow<List<WorkoutEntity>>
 
     @Transaction

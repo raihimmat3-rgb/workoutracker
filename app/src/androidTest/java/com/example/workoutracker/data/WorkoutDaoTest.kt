@@ -187,6 +187,31 @@ class WorkoutDaoTest {
     }
 
     @Test
+    fun history_excludesInProgressWorkouts() = runBlocking {
+        val curl = newExercise("Curl")
+        newWorkout(1_000L, curl, listOf(20.0 to 10), title = "done")
+        // endedAt defaults to null, which means "still in progress".
+        workoutDao.insertWorkout(WorkoutEntity(title = "in progress", startedAt = 2_000L))
+
+        val titles = workoutDao.observeHistory().first().map { it.title }
+
+        assertEquals(listOf("done"), titles)
+    }
+
+    @Test
+    fun observeActive_returnsOnlyAnUnfinishedWorkout() = runBlocking {
+        assertNull(workoutDao.observeActive().first())
+
+        val id = workoutDao.insertWorkout(WorkoutEntity(title = "live", startedAt = 3_000L))
+        assertEquals(id, workoutDao.observeActive().first()?.id)
+
+        // Finishing it (setting endedAt) means there is no active workout any more.
+        workoutDao.updateWorkout(workoutDao.getById(id)!!.copy(endedAt = 4_000L))
+        assertNull(workoutDao.observeActive().first())
+    }
+
+
+    @Test
     fun search_matchesPartOfName() = runBlocking {
         newExercise("Lat Pulldown (Cable)")
         newExercise("Lying Leg Curl (Machine)")
