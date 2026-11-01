@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import com.example.workoutracker.data.AppDatabase
 import com.example.workoutracker.data.WorkoutEntity
 import com.example.workoutracker.data.WorkoutExerciseWithSets
@@ -27,7 +28,8 @@ class ActiveWorkoutViewModel(
 ) : AndroidViewModel(application) {
 
     private val workoutId: Long = checkNotNull(savedStateHandle["workoutId"])
-    private val dao = AppDatabase.get(application).workoutDao()
+    private val db = AppDatabase.get(application)
+    private val dao = db.workoutDao()
 
     val workout: StateFlow<WorkoutEntity?> =
         dao.observeById(workoutId)
@@ -41,6 +43,25 @@ class ActiveWorkoutViewModel(
         dao.observeDetails(workoutId)
             .map { details -> details?.exercises.orEmpty().sortedBy { it.workoutExercise.position } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Moves an exercise one place up or down by swapping positions with its neighbour.
+     * It re-reads the order inside a transaction rather than trusting the list on screen,
+     * so a quick double-tap can't swap based on stale data.
+     */
+    fun moveExercise(workoutExerciseId: Long, up: Boolean) {
+        viewModelScope.launch {
+            db.withTransaction {
+                val ordered = dao.getWorkoutExercises(workoutId)
+                val index = ordered.indexOfFirst { it.id == workoutExerciseId }
+                val target = neighbourIndex(index, ordered.size, up) ?: return@withTransaction
+                val a = ordered[index]
+                val b = ordered[target]
+                dao.updatePosition(a.id, b.position)
+                dao.updatePosition(b.id, a.position)
+            }
+        }
+    }
 
     /** Removes one exercise (and its sets) from this workout. */
     fun removeExercise(workoutExerciseId: Long) {

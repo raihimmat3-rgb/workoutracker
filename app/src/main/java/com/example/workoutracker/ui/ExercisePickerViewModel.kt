@@ -49,15 +49,40 @@ class ExercisePickerViewModel(
         if (adding) return // ignore a second tap while the first one is still saving
         adding = true
         viewModelScope.launch {
-            // Reading the next position and inserting happen in one transaction,
-            // so two adds can never end up with the same position.
+            db.withTransaction { appendToWorkout(exerciseId) }
+            onDone()
+        }
+    }
+
+    /**
+     * Creates a custom exercise called [name] and adds it to the workout, then calls [onDone].
+     * Calls [onError] instead if the name isn't valid.
+     */
+    fun createAndAdd(name: String, onDone: () -> Unit, onError: (String) -> Unit) {
+        validateExerciseName(name)?.let {
+            onError(it)
+            return
+        }
+        if (adding) return
+        adding = true
+        viewModelScope.launch {
+            // Creating the exercise and adding it happen together: either both or neither.
             db.withTransaction {
-                val position = workoutDao.nextPosition(workoutId)
-                workoutDao.insertWorkoutExercise(
-                    WorkoutExerciseEntity(workoutId = workoutId, exerciseId = exerciseId, position = position)
-                )
+                val trimmed = name.trim()
+                val newId = exerciseDao.insert(ExerciseEntity(name = trimmed, isCustom = true))
+                // -1 means the name already exists (names ignore case), so use that one instead.
+                val exerciseId = if (newId != -1L) newId else exerciseDao.findByName(trimmed)!!.id
+                appendToWorkout(exerciseId)
             }
             onDone()
         }
+    }
+
+    /** Must be called inside a transaction, so reading the next position and inserting can't interleave. */
+    private suspend fun appendToWorkout(exerciseId: Long) {
+        val position = workoutDao.nextPosition(workoutId)
+        workoutDao.insertWorkoutExercise(
+            WorkoutExerciseEntity(workoutId = workoutId, exerciseId = exerciseId, position = position)
+        )
     }
 }

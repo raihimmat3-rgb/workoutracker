@@ -171,8 +171,22 @@ class WorkoutDaoTest {
         val benchWe = workoutDao.insertWorkoutExercise(
             WorkoutExerciseEntity(workoutId = workoutId, exerciseId = bench, position = 0)
         )
-        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = benchWe, setIndex = 0, weightKg = 80.0, reps = 5))
-        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = flyWe, setIndex = 0, weightKg = 15.0, reps = 12))
+        workoutDao.insertSet(
+            WorkoutSetEntity(
+                workoutExerciseId = benchWe,
+                setIndex = 0,
+                weightKg = 80.0,
+                reps = 5
+            )
+        )
+        workoutDao.insertSet(
+            WorkoutSetEntity(
+                workoutExerciseId = flyWe,
+                setIndex = 0,
+                weightKg = 15.0,
+                reps = 12
+            )
+        )
 
         val ordered = workoutDao.observeDetails(workoutId).first()!!
             .exercises.sortedBy { it.workoutExercise.position }
@@ -216,8 +230,20 @@ class WorkoutDaoTest {
         val workoutId = workoutDao.insertWorkout(WorkoutEntity(title = "w", startedAt = 7_000L))
         assertEquals(0, workoutDao.nextPosition(workoutId))
 
-        workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = bench, position = 0))
-        workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = bench, position = 1))
+        workoutDao.insertWorkoutExercise(
+            WorkoutExerciseEntity(
+                workoutId = workoutId,
+                exerciseId = bench,
+                position = 0
+            )
+        )
+        workoutDao.insertWorkoutExercise(
+            WorkoutExerciseEntity(
+                workoutId = workoutId,
+                exerciseId = bench,
+                position = 1
+            )
+        )
 
         assertEquals(2, workoutDao.nextPosition(workoutId))
     }
@@ -245,5 +271,33 @@ class WorkoutDaoTest {
         val names = exerciseDao.search("curl").first().map { it.name }
 
         assertEquals(listOf("Lying Leg Curl (Machine)"), names)
+    }
+
+    @Test
+    fun updatePosition_changesTheOrder() = runBlocking {
+        val bench = newExercise("Bench")
+        val fly = newExercise("Fly")
+        val workoutId = workoutDao.insertWorkout(WorkoutEntity(title = "w", startedAt = 9_000L))
+        val benchWe = workoutDao.insertWorkoutExercise(
+            WorkoutExerciseEntity(
+                workoutId = workoutId,
+                exerciseId = bench,
+                position = 0
+            )
+        )
+        val flyWe = workoutDao.insertWorkoutExercise(
+            WorkoutExerciseEntity(
+                workoutId = workoutId,
+                exerciseId = fly,
+                position = 1
+            )
+        )
+
+        // Swap them, the same way moveExercise does.
+        workoutDao.updatePosition(benchWe, 1)
+        workoutDao.updatePosition(flyWe, 0)
+
+        val order = workoutDao.getWorkoutExercises(workoutId).map { it.exerciseId }
+        assertEquals(listOf(fly, bench), order)
     }
 }

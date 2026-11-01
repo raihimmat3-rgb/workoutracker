@@ -1,6 +1,7 @@
 package com.example.workoutracker.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -22,6 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -38,6 +43,7 @@ fun ExercisePickerScreen(
 ) {
     val exercises by viewModel.exercises.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
+    var createError by rememberSaveable { mutableStateOf<String?>(null) }
 
     Scaffold(
         modifier = modifier,
@@ -55,7 +61,10 @@ fun ExercisePickerScreen(
         Column(modifier = Modifier.padding(padding)) {
             OutlinedTextField(
                 value = query,
-                onValueChange = viewModel::onQueryChange,
+                onValueChange = {
+                    viewModel.onQueryChange(it)
+                    createError = null
+                },
                 label = { Text("Search exercises") },
                 singleLine = true,
                 modifier = Modifier
@@ -70,15 +79,41 @@ fun ExercisePickerScreen(
                         .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (query.isBlank()) {
-                            "Your exercise library is empty. Add exercises on the Exercises tab first."
-                        } else {
-                            "No exercises match \"$query\""
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                        textAlign = TextAlign.Center
-                    )
+                    if (query.isBlank()) {
+                        Text(
+                            "Your exercise library is empty. Search for a name to create one, " +
+                                    "or add exercises on the Exercises tab.",
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(
+                                "No exercises match \"${query.trim()}\"",
+                                style = MaterialTheme.typography.bodyLarge,
+                                textAlign = TextAlign.Center
+                            )
+                            Button(onClick = {
+                                viewModel.createAndAdd(
+                                    name = query,
+                                    onDone = onBack,
+                                    onError = { createError = it }
+                                )
+                            }) {
+                                Text("Create \"${query.trim()}\"")
+                            }
+                            createError?.let {
+                                Text(
+                                    it,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {

@@ -39,6 +39,13 @@ interface WorkoutDao {
     @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM workout_exercise WHERE workoutId = :workoutId")
     suspend fun nextPosition(workoutId: Long): Int
 
+    /** This workout's exercises, in order. Used inside transactions (not observed). */
+    @Query("SELECT * FROM workout_exercise WHERE workoutId = :workoutId ORDER BY position")
+    suspend fun getWorkoutExercises(workoutId: Long): List<WorkoutExerciseEntity>
+
+    @Query("UPDATE workout_exercise SET position = :position WHERE id = :id")
+    suspend fun updatePosition(id: Long, position: Int): Int
+
     /** Removes one exercise from a workout; its sets go with it (cascade). Returns rows deleted. */
     @Query("DELETE FROM workout_exercise WHERE id = :id")
     suspend fun deleteWorkoutExercise(id: Long): Int

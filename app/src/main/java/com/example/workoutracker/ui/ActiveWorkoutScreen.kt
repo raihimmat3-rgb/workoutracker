@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -66,6 +68,7 @@ fun ActiveWorkoutScreen(
             exercises = exercises,
             onAddExercise = { onAddExercise(current.id) },
             onRemoveExercise = viewModel::removeExercise,
+            onMoveExercise = viewModel::moveExercise,
             onFinish = { title, notes -> viewModel.finish(title, notes, onFinished) },
             onDiscard = { viewModel.discard(onDiscarded) },
             modifier = modifier
@@ -80,6 +83,7 @@ private fun ActiveWorkoutContent(
     exercises: List<WorkoutExerciseWithSets>,
     onAddExercise: () -> Unit,
     onRemoveExercise: (workoutExerciseId: Long) -> Unit,
+    onMoveExercise: (workoutExerciseId: Long, up: Boolean) -> Unit,
     onFinish: (title: String, notes: String) -> Unit,
     onDiscard: () -> Unit,
     modifier: Modifier = Modifier
@@ -139,9 +143,13 @@ private fun ActiveWorkoutContent(
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
-            exercises.forEach { item ->
+            exercises.forEachIndexed { index, item ->
                 ExerciseBlock(
                     item = item,
+                    canMoveUp = index > 0,
+                    canMoveDown = index < exercises.lastIndex,
+                    onMoveUp = { onMoveExercise(item.workoutExercise.id, true) },
+                    onMoveDown = { onMoveExercise(item.workoutExercise.id, false) },
                     onRemove = {
                         // Nothing to lose if it has no sets, so skip the confirmation.
                         if (item.sets.isEmpty()) onRemoveExercise(item.workoutExercise.id)
@@ -223,7 +231,14 @@ private fun ActiveWorkoutContent(
 
 /** One exercise in the active workout. Set logging is added on Day 11. */
 @Composable
-private fun ExerciseBlock(item: WorkoutExerciseWithSets, onRemove: () -> Unit) {
+private fun ExerciseBlock(
+    item: WorkoutExerciseWithSets,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onRemove: () -> Unit
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
@@ -242,6 +257,12 @@ private fun ExerciseBlock(item: WorkoutExerciseWithSets, onRemove: () -> Unit) {
                     },
                     style = MaterialTheme.typography.bodyMedium
                 )
+            }
+            IconButton(onClick = onMoveUp, enabled = canMoveUp) {
+                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move ${item.exercise.name} up")
+            }
+            IconButton(onClick = onMoveDown, enabled = canMoveDown) {
+                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move ${item.exercise.name} down")
             }
             IconButton(onClick = onRemove) {
                 Icon(Icons.Default.Delete, contentDescription = "Remove ${item.exercise.name}")
