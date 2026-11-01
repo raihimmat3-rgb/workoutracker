@@ -35,6 +35,14 @@ interface WorkoutDao {
     @Insert
     suspend fun insertWorkoutExercise(workoutExercise: WorkoutExerciseEntity): Long
 
+    /** The next free position in a workout: 0 for the first exercise, then 1, 2, ... */
+    @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM workout_exercise WHERE workoutId = :workoutId")
+    suspend fun nextPosition(workoutId: Long): Int
+
+    /** Removes one exercise from a workout; its sets go with it (cascade). Returns rows deleted. */
+    @Query("DELETE FROM workout_exercise WHERE id = :id")
+    suspend fun deleteWorkoutExercise(id: Long): Int
+
     @Insert
     suspend fun insertSet(set: WorkoutSetEntity): Long
 

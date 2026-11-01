@@ -8,8 +8,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.example.workoutracker.data.AppDatabase
 import com.example.workoutracker.data.WorkoutEntity
+import com.example.workoutracker.data.WorkoutExerciseWithSets
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -30,6 +32,23 @@ class ActiveWorkoutViewModel(
     val workout: StateFlow<WorkoutEntity?> =
         dao.observeById(workoutId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * The exercises in this workout, in the order they were added. Room's @Relation doesn't
+     * promise any order, so we sort by position ourselves (as the Day 5 test showed).
+     */
+    val exercises: StateFlow<List<WorkoutExerciseWithSets>> =
+        dao.observeDetails(workoutId)
+            .map { details -> details?.exercises.orEmpty().sortedBy { it.workoutExercise.position } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Removes one exercise (and its sets) from this workout. */
+    fun removeExercise(workoutExerciseId: Long) {
+        viewModelScope.launch {
+            val rows = dao.deleteWorkoutExercise(workoutExerciseId)
+            Log.d(TAG, "removeExercise: $workoutExerciseId, rows deleted=$rows")
+        }
+    }
 
     /**
      * Saves the title and notes, stamps the end time, then calls [onDone].

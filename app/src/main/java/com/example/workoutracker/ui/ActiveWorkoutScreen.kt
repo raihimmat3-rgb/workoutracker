@@ -3,17 +3,26 @@ package com.example.workoutracker.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -32,15 +41,18 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.workoutracker.data.WorkoutEntity
+import com.example.workoutracker.data.WorkoutExerciseWithSets
 
 @Composable
 fun ActiveWorkoutScreen(
     onFinished: () -> Unit,
     onDiscarded: () -> Unit,
+    onAddExercise: (workoutId: Long) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ActiveWorkoutViewModel = viewModel()
 ) {
     val workout by viewModel.workout.collectAsStateWithLifecycle()
+    val exercises by viewModel.exercises.collectAsStateWithLifecycle()
     val current = workout
 
     if (current == null) {
@@ -51,6 +63,9 @@ fun ActiveWorkoutScreen(
     } else {
         ActiveWorkoutContent(
             workout = current,
+            exercises = exercises,
+            onAddExercise = { onAddExercise(current.id) },
+            onRemoveExercise = viewModel::removeExercise,
             onFinish = { title, notes -> viewModel.finish(title, notes, onFinished) },
             onDiscard = { viewModel.discard(onDiscarded) },
             modifier = modifier
@@ -62,6 +77,9 @@ fun ActiveWorkoutScreen(
 @Composable
 private fun ActiveWorkoutContent(
     workout: WorkoutEntity,
+    exercises: List<WorkoutExerciseWithSets>,
+    onAddExercise: () -> Unit,
+    onRemoveExercise: (workoutExerciseId: Long) -> Unit,
     onFinish: (title: String, notes: String) -> Unit,
     onDiscard: () -> Unit,
     modifier: Modifier = Modifier
@@ -73,6 +91,8 @@ private fun ActiveWorkoutContent(
     var notes by rememberSaveable { mutableStateOf(workout.notes ?: "") }
     var confirmDiscard by rememberSaveable { mutableStateOf(false) }
     var confirmFinish by rememberSaveable { mutableStateOf(false) }
+    // The id of an exercise waiting for "remove?" confirmation, or null.
+    var pendingRemoval by rememberSaveable { mutableStateOf<Long?>(null) }
     val elapsed = rememberElapsedMillis(workout.startedAt)
 
     Scaffold(
@@ -113,12 +133,27 @@ private fun ActiveWorkoutContent(
                 modifier = Modifier.fillMaxWidth()
             )
 
-            Card(modifier = Modifier.fillMaxWidth()) {
+            if (exercises.isEmpty()) {
                 Text(
-                    "Exercises and sets will appear here (Days 10 and 11).",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(16.dp)
+                    "No exercises yet. Tap Add exercise to start.",
+                    style = MaterialTheme.typography.bodyMedium
                 )
+            }
+            exercises.forEach { item ->
+                ExerciseBlock(
+                    item = item,
+                    onRemove = {
+                        // Nothing to lose if it has no sets, so skip the confirmation.
+                        if (item.sets.isEmpty()) onRemoveExercise(item.workoutExercise.id)
+                        else pendingRemoval = item.workoutExercise.id
+                    }
+                )
+            }
+
+            FilledTonalButton(onClick = onAddExercise, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Add exercise")
             }
 
             OutlinedButton(
@@ -157,6 +192,20 @@ private fun ActiveWorkoutContent(
         )
     }
 
+    pendingRemoval?.let { id ->
+        AlertDialog(
+            onDismissRequest = { pendingRemoval = null },
+            title = { Text("Remove exercise?") },
+            text = { Text("Its logged sets will be deleted too.") },
+            confirmButton = {
+                TextButton(onClick = { pendingRemoval = null; onRemoveExercise(id) }) { Text("Remove") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoval = null }) { Text("Keep") }
+            }
+        )
+    }
+
     if (confirmDiscard) {
         AlertDialog(
             onDismissRequest = { confirmDiscard = false },
@@ -169,5 +218,34 @@ private fun ActiveWorkoutContent(
                 TextButton(onClick = { confirmDiscard = false }) { Text("Keep") }
             }
         )
+    }
+}
+
+/** One exercise in the active workout. Set logging is added on Day 11. */
+@Composable
+private fun ExerciseBlock(item: WorkoutExerciseWithSets, onRemove: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(item.exercise.name, style = MaterialTheme.typography.titleMedium)
+                item.exercise.muscleGroup?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall)
+                }
+                Text(
+                    text = when (item.sets.size) {
+                        0 -> "No sets yet"
+                        1 -> "1 set"
+                        else -> "${item.sets.size} sets"
+                    },
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Default.Delete, contentDescription = "Remove ${item.exercise.name}")
+            }
+        }
     }
 }

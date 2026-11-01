@@ -33,6 +33,9 @@ private enum class Tab(val route: String, val label: String, val icon: ImageVect
 private const val WORKOUT_ROUTE = "workout/{workoutId}"
 private fun workoutRoute(id: Long) = "workout/$id"
 
+private const val ADD_EXERCISE_ROUTE = "workout/{workoutId}/add-exercise"
+private fun addExerciseRoute(id: Long) = "workout/$id/add-exercise"
+
 /**
  * Switches to a bottom-bar tab: keeps one copy of each tab and remembers its state.
  * Every tab switch should go through here, including ones the code makes itself,
@@ -110,8 +113,18 @@ fun MainScreen() {
                         navController.popBackStack(Tab.Home.route, inclusive = false)
                         navController.navigateToTab(Tab.History.route)
                     },
-                    onDiscarded = { navController.popBackStack() }
+                    onDiscarded = { navController.popBackStack() },
+                    onAddExercise = { id ->
+                        navController.navigate(addExerciseRoute(id)) { launchSingleTop = true }
+                    }
                 )
+            }
+            composable(
+                route = ADD_EXERCISE_ROUTE,
+                arguments = listOf(navArgument("workoutId") { type = NavType.LongType })
+            ) {
+                // After adding, go back: the workout screen updates itself from the database.
+                ExercisePickerScreen(onBack = { navController.popBackStack() })
             }
         }
     }

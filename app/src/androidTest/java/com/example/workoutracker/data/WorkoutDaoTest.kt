@@ -210,6 +210,31 @@ class WorkoutDaoTest {
         assertNull(workoutDao.observeActive().first())
     }
 
+    @Test
+    fun nextPosition_countsUpFromZero() = runBlocking {
+        val bench = newExercise("Bench")
+        val workoutId = workoutDao.insertWorkout(WorkoutEntity(title = "w", startedAt = 7_000L))
+        assertEquals(0, workoutDao.nextPosition(workoutId))
+
+        workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = bench, position = 0))
+        workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = bench, position = 1))
+
+        assertEquals(2, workoutDao.nextPosition(workoutId))
+    }
+
+    @Test
+    fun deleteWorkoutExercise_removesItsSetsButKeepsTheWorkout() = runBlocking {
+        val squat = newExercise("Squat")
+        val workoutId = newWorkout(8_000L, squat, listOf(100.0 to 5, 100.0 to 5))
+        val weId = workoutDao.observeDetails(workoutId).first()!!.exercises[0].workoutExercise.id
+
+        assertEquals(1, workoutDao.deleteWorkoutExercise(weId))
+
+        assertEquals(1, countRows("workout"))
+        assertEquals(0, countRows("workout_exercise"))
+        assertEquals(0, countRows("workout_set"))
+        assertEquals(1, countRows("exercise"))
+    }
 
     @Test
     fun search_matchesPartOfName() = runBlocking {
