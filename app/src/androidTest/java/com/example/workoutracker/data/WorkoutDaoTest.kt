@@ -333,4 +333,43 @@ class WorkoutDaoTest {
         assertNull(remaining[0].reps)
     }
 
+    @Test
+    fun getPreviousSets_returnsTheMostRecentFinishedWorkout() = runBlocking {
+        val bench = newExercise("Bench")
+        newWorkout(1_000L, bench, listOf(50.0 to 10))            // older finished workout
+        newWorkout(2_000L, bench, listOf(60.0 to 8, 60.0 to 7))  // most recent finished workout
+        val current = workoutDao.insertWorkout(WorkoutEntity(title = "now", startedAt = 3_000L))
+        workoutDao.insertWorkoutExercise(
+            WorkoutExerciseEntity(workoutId = current, exerciseId = bench, position = 0)
+        )
+
+        val previous = workoutDao.getPreviousSets(bench, current)
+
+        assertEquals(listOf(8, 7), previous.map { it.reps })
+    }
+
+    @Test
+    fun getPreviousSets_ignoresUnfinishedWorkouts() = runBlocking {
+        val squat = newExercise("Squat")
+        newWorkout(1_000L, squat, listOf(100.0 to 5))                       // finished
+        val abandoned = workoutDao.insertWorkout(WorkoutEntity(title = "x", startedAt = 2_000L)) // never finished
+        val weId = workoutDao.insertWorkoutExercise(
+            WorkoutExerciseEntity(workoutId = abandoned, exerciseId = squat, position = 0)
+        )
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = weId, setIndex = 0, weightKg = 140.0, reps = 1))
+        val current = workoutDao.insertWorkout(WorkoutEntity(title = "now", startedAt = 3_000L))
+
+        val previous = workoutDao.getPreviousSets(squat, current)
+
+        assertEquals(listOf(5), previous.map { it.reps })
+    }
+
+    @Test
+    fun getPreviousSets_isEmptyWithNoHistory() = runBlocking {
+        val curl = newExercise("Curl")
+        val current = workoutDao.insertWorkout(WorkoutEntity(title = "now", startedAt = 4_000L))
+
+        assertEquals(0, workoutDao.getPreviousSets(curl, current).size)
+    }
+
 }

@@ -11,9 +11,12 @@ import com.example.workoutracker.data.AppDatabase
 import com.example.workoutracker.data.WorkoutEntity
 import com.example.workoutracker.data.WorkoutExerciseWithSets
 import com.example.workoutracker.data.WorkoutSetEntity
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -49,6 +52,19 @@ class ActiveWorkoutViewModel(
                     .map { it.copy(sets = it.sets.sortedBy { set -> set.setIndex }) }
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Exercise id -> its sets from the last finished workout that had it (the "Previous" column).
+     * Only re-queried when the list of exercises changes, not on every keystroke,
+     * because past workouts don't change while you're training.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val previousSets: StateFlow<Map<Long, List<WorkoutSetEntity>>> =
+        exercises
+            .map { list -> list.map { it.exercise.id }.distinct() }
+            .distinctUntilChanged()
+            .mapLatest { ids -> ids.associateWith { dao.getPreviousSets(it, workoutId) } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /**
      * Moves an exercise one place up or down by swapping positions with its neighbour.

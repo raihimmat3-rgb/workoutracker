@@ -60,6 +60,28 @@ interface WorkoutDao {
     @Query("SELECT * FROM workout_set WHERE workoutExerciseId = :workoutExerciseId ORDER BY setIndex DESC LIMIT 1")
     suspend fun getLastSet(workoutExerciseId: Long): WorkoutSetEntity?
 
+    /**
+     * The sets you did for [exerciseId] the last time you trained it: taken from the most recent
+     * FINISHED workout containing it (other than [currentWorkoutId]). If that workout had the
+     * exercise twice, the first occurrence is used. Empty if there's no history yet.
+     */
+    @Query(
+        """
+        SELECT s.* FROM workout_set s
+        WHERE s.workoutExerciseId = (
+            SELECT we.id FROM workout_exercise we
+            JOIN workout w ON w.id = we.workoutId
+            WHERE we.exerciseId = :exerciseId
+              AND w.endedAt IS NOT NULL
+              AND w.id != :currentWorkoutId
+            ORDER BY w.startedAt DESC, we.position ASC
+            LIMIT 1
+        )
+        ORDER BY s.setIndex
+        """
+    )
+    suspend fun getPreviousSets(exerciseId: Long, currentWorkoutId: Long): List<WorkoutSetEntity>
+
     /** Changes just the weight and reps of one set. Returns rows updated. */
     @Query("UPDATE workout_set SET weightKg = :weightKg, reps = :reps WHERE id = :id")
     suspend fun updateSetValues(id: Long, weightKg: Double?, reps: Int?): Int

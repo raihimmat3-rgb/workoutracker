@@ -62,6 +62,7 @@ fun ActiveWorkoutScreen(
 ) {
     val workout by viewModel.workout.collectAsStateWithLifecycle()
     val exercises by viewModel.exercises.collectAsStateWithLifecycle()
+    val previousSets by viewModel.previousSets.collectAsStateWithLifecycle()
     val current = workout
 
     if (current == null) {
@@ -73,6 +74,7 @@ fun ActiveWorkoutScreen(
         ActiveWorkoutContent(
             workout = current,
             exercises = exercises,
+            previousSets = previousSets,
             actions = WorkoutActions(
                 addExercise = { onAddExercise(current.id) },
                 removeExercise = viewModel::removeExercise,
@@ -105,6 +107,7 @@ private class WorkoutActions(
 private fun ActiveWorkoutContent(
     workout: WorkoutEntity,
     exercises: List<WorkoutExerciseWithSets>,
+    previousSets: Map<Long, List<WorkoutSetEntity>>,
     actions: WorkoutActions,
     modifier: Modifier = Modifier
 ) {
@@ -171,6 +174,7 @@ private fun ActiveWorkoutContent(
                 key(item.workoutExercise.id) {
                     ExerciseBlock(
                         item = item,
+                        previous = previousSets[item.exercise.id].orEmpty(),
                         canMoveUp = index > 0,
                         canMoveDown = index < exercises.lastIndex,
                         actions = actions,
@@ -265,6 +269,7 @@ private fun ElapsedText(startedAt: Long) {
 @Composable
 private fun ExerciseBlock(
     item: WorkoutExerciseWithSets,
+    previous: List<WorkoutSetEntity>,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
     actions: WorkoutActions,
@@ -278,6 +283,11 @@ private fun ExerciseBlock(
                     Text(item.exercise.name, style = MaterialTheme.typography.titleMedium)
                     item.exercise.muscleGroup?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
+                    // Live total: updates as you type, because the sets come from the database flow.
+                    val volume = exerciseVolume(item.sets)
+                    if (volume > 0) {
+                        Text("Volume: ${formatVolume(volume)} kg", style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 IconButton(onClick = { actions.moveExercise(weId, true) }, enabled = canMoveUp) {
@@ -298,6 +308,8 @@ private fun ExerciseBlock(
                         SetRow(
                             number = index + 1,
                             set = set,
+                            // Matched by set number (1st with 1st...), not setIndex, which can have gaps.
+                            previous = previous.getOrNull(index),
                             onChange = { weightKg, reps -> actions.updateSet(set.id, weightKg, reps) },
                             onDelete = { actions.deleteSet(set.id) }
                         )
@@ -324,6 +336,7 @@ private fun SetHeaderRow() {
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text("Set", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(32.dp))
+        Text("Previous", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.2f))
         Text("kg", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
         Text("Reps", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
     }
@@ -333,6 +346,7 @@ private fun SetHeaderRow() {
 private fun SetRow(
     number: Int,
     set: WorkoutSetEntity,
+    previous: WorkoutSetEntity?,
     onChange: (weightKg: Double?, reps: Int?) -> Unit,
     onDelete: () -> Unit
 ) {
@@ -349,6 +363,11 @@ private fun SetRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text("$number", style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(32.dp))
+        Text(
+            text = formatPrevious(previous?.weightKg, previous?.reps),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1.2f)
+        )
         OutlinedTextField(
             value = weightText,
             onValueChange = { new ->
