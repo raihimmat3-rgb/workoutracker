@@ -10,6 +10,7 @@ import androidx.room.withTransaction
 import com.example.workoutracker.data.AppDatabase
 import com.example.workoutracker.data.WorkoutEntity
 import com.example.workoutracker.data.WorkoutExerciseWithSets
+import com.example.workoutracker.data.WorkoutSetEntity
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -41,7 +42,12 @@ class ActiveWorkoutViewModel(
      */
     val exercises: StateFlow<List<WorkoutExerciseWithSets>> =
         dao.observeDetails(workoutId)
-            .map { details -> details?.exercises.orEmpty().sortedBy { it.workoutExercise.position } }
+            .map { details ->
+                details?.exercises.orEmpty()
+                    .sortedBy { it.workoutExercise.position }
+                    // Sets aren't promised in order either, so sort them by setIndex.
+                    .map { it.copy(sets = it.sets.sortedBy { set -> set.setIndex }) }
+            }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /**
@@ -61,6 +67,35 @@ class ActiveWorkoutViewModel(
                 dao.updatePosition(b.id, a.position)
             }
         }
+    }
+
+    /**
+     * Adds a set to the end of an exercise. It copies the weight and reps of the previous set,
+     * since most sets repeat the one before, so usually you only change one number.
+     */
+    fun addSet(workoutExerciseId: Long) {
+        viewModelScope.launch {
+            db.withTransaction {
+                val last = dao.getLastSet(workoutExerciseId)
+                dao.insertSet(
+                    WorkoutSetEntity(
+                        workoutExerciseId = workoutExerciseId,
+                        setIndex = (last?.setIndex ?: -1) + 1,
+                        weightKg = last?.weightKg,
+                        reps = last?.reps
+                    )
+                )
+            }
+        }
+    }
+
+    /** Saves a set's weight and reps. Called as you type; null means the box is empty. */
+    fun updateSet(setId: Long, weightKg: Double?, reps: Int?) {
+        viewModelScope.launch { dao.updateSetValues(setId, weightKg, reps) }
+    }
+
+    fun deleteSet(setId: Long) {
+        viewModelScope.launch { dao.deleteSet(setId) }
     }
 
     /** Removes one exercise (and its sets) from this workout. */

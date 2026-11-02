@@ -56,6 +56,17 @@ interface WorkoutDao {
     @Insert
     suspend fun insertSets(sets: List<WorkoutSetEntity>)
 
+    /** The highest-numbered set of one exercise in a workout, or null if it has none yet. */
+    @Query("SELECT * FROM workout_set WHERE workoutExerciseId = :workoutExerciseId ORDER BY setIndex DESC LIMIT 1")
+    suspend fun getLastSet(workoutExerciseId: Long): WorkoutSetEntity?
+
+    /** Changes just the weight and reps of one set. Returns rows updated. */
+    @Query("UPDATE workout_set SET weightKg = :weightKg, reps = :reps WHERE id = :id")
+    suspend fun updateSetValues(id: Long, weightKg: Double?, reps: Int?): Int
+
+    @Query("DELETE FROM workout_set WHERE id = :id")
+    suspend fun deleteSet(id: Long): Int
+
     /** Returns how many rows were updated (1 if it worked, 0 if no workout had that id). */
     @Update
     suspend fun updateWorkout(workout: WorkoutEntity): Int

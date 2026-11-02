@@ -300,4 +300,37 @@ class WorkoutDaoTest {
         val order = workoutDao.getWorkoutExercises(workoutId).map { it.exerciseId }
         assertEquals(listOf(fly, bench), order)
     }
+
+    @Test
+    fun getLastSet_returnsHighestIndexOrNull() = runBlocking {
+        val bench = newExercise("Bench")
+        val workoutId = workoutDao.insertWorkout(WorkoutEntity(title = "w", startedAt = 10_000L))
+        val weId = workoutDao.insertWorkoutExercise(
+            WorkoutExerciseEntity(workoutId = workoutId, exerciseId = bench, position = 0)
+        )
+        assertNull(workoutDao.getLastSet(weId))
+
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = weId, setIndex = 0, weightKg = 60.0, reps = 8))
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = weId, setIndex = 1, weightKg = 62.5, reps = 6))
+
+        val last = workoutDao.getLastSet(weId)!!
+        assertEquals(1, last.setIndex)
+        assertEquals(62.5, last.weightKg!!, 0.0001)
+    }
+
+    @Test
+    fun updateSetValues_andDeleteSet() = runBlocking {
+        val row = newExercise("Row")
+        val workoutId = newWorkout(11_000L, row, listOf(50.0 to 10, 50.0 to 10))
+        val sets = workoutDao.observeDetails(workoutId).first()!!.exercises[0].sets.sortedBy { it.setIndex }
+
+        assertEquals(1, workoutDao.updateSetValues(sets[0].id, 55.0, null))
+        assertEquals(1, workoutDao.deleteSet(sets[1].id))
+
+        val remaining = workoutDao.observeDetails(workoutId).first()!!.exercises[0].sets
+        assertEquals(1, remaining.size)
+        assertEquals(55.0, remaining[0].weightKg!!, 0.0001)
+        assertNull(remaining[0].reps)
+    }
+
 }

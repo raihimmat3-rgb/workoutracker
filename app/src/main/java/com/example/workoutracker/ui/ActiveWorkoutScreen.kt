@@ -7,12 +7,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -34,16 +37,20 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.workoutracker.data.WorkoutEntity
 import com.example.workoutracker.data.WorkoutExerciseWithSets
+import com.example.workoutracker.data.WorkoutSetEntity
 
 @Composable
 fun ActiveWorkoutScreen(
@@ -66,26 +73,39 @@ fun ActiveWorkoutScreen(
         ActiveWorkoutContent(
             workout = current,
             exercises = exercises,
-            onAddExercise = { onAddExercise(current.id) },
-            onRemoveExercise = viewModel::removeExercise,
-            onMoveExercise = viewModel::moveExercise,
-            onFinish = { title, notes -> viewModel.finish(title, notes, onFinished) },
-            onDiscard = { viewModel.discard(onDiscarded) },
+            actions = WorkoutActions(
+                addExercise = { onAddExercise(current.id) },
+                removeExercise = viewModel::removeExercise,
+                moveExercise = viewModel::moveExercise,
+                addSet = viewModel::addSet,
+                updateSet = viewModel::updateSet,
+                deleteSet = viewModel::deleteSet,
+                finish = { title, notes -> viewModel.finish(title, notes, onFinished) },
+                discard = { viewModel.discard(onDiscarded) }
+            ),
             modifier = modifier
         )
     }
 }
+
+/** Everything the workout screen can ask the ViewModel to do, bundled so the parameter lists stay short. */
+private class WorkoutActions(
+    val addExercise: () -> Unit,
+    val removeExercise: (workoutExerciseId: Long) -> Unit,
+    val moveExercise: (workoutExerciseId: Long, up: Boolean) -> Unit,
+    val addSet: (workoutExerciseId: Long) -> Unit,
+    val updateSet: (setId: Long, weightKg: Double?, reps: Int?) -> Unit,
+    val deleteSet: (setId: Long) -> Unit,
+    val finish: (title: String, notes: String) -> Unit,
+    val discard: () -> Unit
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ActiveWorkoutContent(
     workout: WorkoutEntity,
     exercises: List<WorkoutExerciseWithSets>,
-    onAddExercise: () -> Unit,
-    onRemoveExercise: (workoutExerciseId: Long) -> Unit,
-    onMoveExercise: (workoutExerciseId: Long, up: Boolean) -> Unit,
-    onFinish: (title: String, notes: String) -> Unit,
-    onDiscard: () -> Unit,
+    actions: WorkoutActions,
     modifier: Modifier = Modifier
 ) {
     // Local state, seeded once from the database. Writing every keystroke to the database and
@@ -97,7 +117,6 @@ private fun ActiveWorkoutContent(
     var confirmFinish by rememberSaveable { mutableStateOf(false) }
     // The id of an exercise waiting for "remove?" confirmation, or null.
     var pendingRemoval by rememberSaveable { mutableStateOf<Long?>(null) }
-    val elapsed = rememberElapsedMillis(workout.startedAt)
 
     Scaffold(
         modifier = modifier,
@@ -116,11 +135,14 @@ private fun ActiveWorkoutContent(
         Column(
             modifier = Modifier
                 .padding(padding)
+                .imePadding() // keeps the focused box above the keyboard
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(formatElapsed(elapsed), style = MaterialTheme.typography.displayMedium)
+            // The timer has its own composable so only it redraws every second,
+            // not the whole screen full of text boxes.
+            ElapsedText(workout.startedAt)
 
             OutlinedTextField(
                 value = title,
@@ -144,21 +166,24 @@ private fun ActiveWorkoutContent(
                 )
             }
             exercises.forEachIndexed { index, item ->
-                ExerciseBlock(
-                    item = item,
-                    canMoveUp = index > 0,
-                    canMoveDown = index < exercises.lastIndex,
-                    onMoveUp = { onMoveExercise(item.workoutExercise.id, true) },
-                    onMoveDown = { onMoveExercise(item.workoutExercise.id, false) },
-                    onRemove = {
-                        // Nothing to lose if it has no sets, so skip the confirmation.
-                        if (item.sets.isEmpty()) onRemoveExercise(item.workoutExercise.id)
-                        else pendingRemoval = item.workoutExercise.id
-                    }
-                )
+                // key() ties each block's state (the text in its boxes) to that exercise,
+                // so reordering or removing one doesn't shuffle the typed values around.
+                key(item.workoutExercise.id) {
+                    ExerciseBlock(
+                        item = item,
+                        canMoveUp = index > 0,
+                        canMoveDown = index < exercises.lastIndex,
+                        actions = actions,
+                        onRemove = {
+                            // Nothing to lose if it has no sets, so skip the confirmation.
+                            if (item.sets.isEmpty()) actions.removeExercise(item.workoutExercise.id)
+                            else pendingRemoval = item.workoutExercise.id
+                        }
+                    )
+                }
             }
 
-            FilledTonalButton(onClick = onAddExercise, modifier = Modifier.fillMaxWidth()) {
+            FilledTonalButton(onClick = actions.addExercise, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Add exercise")
@@ -175,6 +200,7 @@ private fun ActiveWorkoutContent(
     }
 
     if (confirmFinish) {
+        val elapsed = rememberElapsedMillis(workout.startedAt)
         val shownTitle = title.trim().ifEmpty { workout.title }
         AlertDialog(
             onDismissRequest = { confirmFinish = false },
@@ -192,7 +218,7 @@ private fun ActiveWorkoutContent(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { confirmFinish = false; onFinish(title, notes) }) { Text("Finish") }
+                TextButton(onClick = { confirmFinish = false; actions.finish(title, notes) }) { Text("Finish") }
             },
             dismissButton = {
                 TextButton(onClick = { confirmFinish = false }) { Text("Keep going") }
@@ -206,7 +232,7 @@ private fun ActiveWorkoutContent(
             title = { Text("Remove exercise?") },
             text = { Text("Its logged sets will be deleted too.") },
             confirmButton = {
-                TextButton(onClick = { pendingRemoval = null; onRemoveExercise(id) }) { Text("Remove") }
+                TextButton(onClick = { pendingRemoval = null; actions.removeExercise(id) }) { Text("Remove") }
             },
             dismissButton = {
                 TextButton(onClick = { pendingRemoval = null }) { Text("Keep") }
@@ -220,7 +246,7 @@ private fun ActiveWorkoutContent(
             title = { Text("Discard this workout?") },
             text = { Text("Everything logged in it will be deleted. This can't be undone.") },
             confirmButton = {
-                TextButton(onClick = { confirmDiscard = false; onDiscard() }) { Text("Discard") }
+                TextButton(onClick = { confirmDiscard = false; actions.discard() }) { Text("Discard") }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDiscard = false }) { Text("Keep") }
@@ -229,44 +255,129 @@ private fun ActiveWorkoutContent(
     }
 }
 
-/** One exercise in the active workout. Set logging is added on Day 11. */
+@Composable
+private fun ElapsedText(startedAt: Long) {
+    val elapsed = rememberElapsedMillis(startedAt)
+    Text(formatElapsed(elapsed), style = MaterialTheme.typography.displayMedium)
+}
+
+/** One exercise in the active workout: its name, controls, and its sets. */
 @Composable
 private fun ExerciseBlock(
     item: WorkoutExerciseWithSets,
     canMoveUp: Boolean,
     canMoveDown: Boolean,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
+    actions: WorkoutActions,
     onRemove: () -> Unit
 ) {
+    val weId = item.workoutExercise.id
     Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(item.exercise.name, style = MaterialTheme.typography.titleMedium)
-                item.exercise.muscleGroup?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall)
+        Column(modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(item.exercise.name, style = MaterialTheme.typography.titleMedium)
+                    item.exercise.muscleGroup?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
-                Text(
-                    text = when (item.sets.size) {
-                        0 -> "No sets yet"
-                        1 -> "1 set"
-                        else -> "${item.sets.size} sets"
-                    },
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                IconButton(onClick = { actions.moveExercise(weId, true) }, enabled = canMoveUp) {
+                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move ${item.exercise.name} up")
+                }
+                IconButton(onClick = { actions.moveExercise(weId, false) }, enabled = canMoveDown) {
+                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move ${item.exercise.name} down")
+                }
+                IconButton(onClick = onRemove) {
+                    Icon(Icons.Default.Delete, contentDescription = "Remove ${item.exercise.name}")
+                }
             }
-            IconButton(onClick = onMoveUp, enabled = canMoveUp) {
-                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Move ${item.exercise.name} up")
+
+            if (item.sets.isNotEmpty()) {
+                SetHeaderRow()
+                item.sets.forEachIndexed { index, set ->
+                    key(set.id) {
+                        SetRow(
+                            number = index + 1,
+                            set = set,
+                            onChange = { weightKg, reps -> actions.updateSet(set.id, weightKg, reps) },
+                            onDelete = { actions.deleteSet(set.id) }
+                        )
+                    }
+                }
             }
-            IconButton(onClick = onMoveDown, enabled = canMoveDown) {
-                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Move ${item.exercise.name} down")
+
+            TextButton(onClick = { actions.addSet(weId) }) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+                Text("Add set")
             }
-            IconButton(onClick = onRemove) {
-                Icon(Icons.Default.Delete, contentDescription = "Remove ${item.exercise.name}")
-            }
+        }
+    }
+}
+
+@Composable
+private fun SetHeaderRow() {
+    Row(
+        // End padding matches the delete button's width so the labels line up with the boxes.
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, end = 48.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("Set", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(32.dp))
+        Text("kg", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+        Text("Reps", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SetRow(
+    number: Int,
+    set: WorkoutSetEntity,
+    onChange: (weightKg: Double?, reps: Int?) -> Unit,
+    onDelete: () -> Unit
+) {
+    // Seeded once from the database, then the boxes own the text (same reason as the title box).
+    // Each keystroke is still saved straight away, so nothing is lost if the app is closed.
+    var weightText by rememberSaveable { mutableStateOf(formatWeight(set.weightKg)) }
+    var repsText by rememberSaveable { mutableStateOf(set.reps?.toString() ?: "") }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text("$number", style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(32.dp))
+        OutlinedTextField(
+            value = weightText,
+            onValueChange = { new ->
+                // Typing a character that would make the number invalid just does nothing.
+                if (isValidWeightInput(new)) {
+                    weightText = new
+                    onChange(parseWeight(new), parseReps(repsText))
+                }
+            },
+            placeholder = { Text("kg") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+            modifier = Modifier.weight(1f)
+        )
+        OutlinedTextField(
+            value = repsText,
+            onValueChange = { new ->
+                if (isValidRepsInput(new)) {
+                    repsText = new
+                    onChange(parseWeight(weightText), parseReps(new))
+                }
+            },
+            placeholder = { Text("reps") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+            modifier = Modifier.weight(1f)
+        )
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Default.Close, contentDescription = "Delete set $number")
         }
     }
 }
