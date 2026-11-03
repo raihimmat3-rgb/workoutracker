@@ -9,8 +9,16 @@ import org.junit.Test
 
 class WorkoutStatsTest {
 
-    private fun set(kg: Double?, reps: Int?) =
-        WorkoutSetEntity(workoutExerciseId = 1, setIndex = 0, weightKg = kg, reps = reps)
+    private fun set(kg: Double?, reps: Int?, done: Boolean = true) =
+        WorkoutSetEntity(workoutExerciseId = 1, setIndex = 0, weightKg = kg, reps = reps, isDone = done)
+
+    private fun exercise(id: Long, vararg sets: WorkoutSetEntity) = WorkoutExerciseWithSets(
+        workoutExercise = WorkoutExerciseEntity(id = id, workoutId = 1, exerciseId = id, position = id.toInt()),
+        sets = sets.toList(),
+        exercise = ExerciseEntity(id = id, name = "Exercise $id")
+    )
+
+    // ---- volume ----
 
     @Test
     fun setVolume_isWeightTimesReps() {
@@ -24,8 +32,8 @@ class WorkoutStatsTest {
     }
 
     @Test
-    fun exerciseVolume_addsSetsAndSkipsEmptyOnes() {
-        val sets = listOf(set(60.0, 8), set(60.0, 7), set(null, 10), set(62.5, null))
+    fun exerciseVolume_countsOnlyDoneSets() {
+        val sets = listOf(set(60.0, 8), set(60.0, 7), set(100.0, 5, done = false), set(null, 10))
         assertEquals(900.0, exerciseVolume(sets), 0.0001)
     }
 
@@ -45,54 +53,48 @@ class WorkoutStatsTest {
         assertEquals("—", formatPrevious(null, null))
     }
 
+    // ---- ticking ----
+
+    @Test
+    fun canTick_needsReps() {
+        assertEquals(true, canTick("8"))
+        assertEquals(false, canTick(""))
+    }
+
     // ---- finishing ----
 
-    private fun exercise(id: Long, vararg sets: WorkoutSetEntity) = WorkoutExerciseWithSets(
-        workoutExercise = WorkoutExerciseEntity(id = id, workoutId = 1, exerciseId = id, position = id.toInt()),
-        sets = sets.toList(),
-        exercise = ExerciseEntity(id = id, name = "Exercise $id")
-    )
-
     @Test
-    fun loggedSet_needsReps() {
-        assertEquals(true, isLoggedSet(set(60.0, 8)))
-        assertEquals(true, isLoggedSet(set(null, 12)))   // bodyweight
-        assertEquals(false, isLoggedSet(set(60.0, null))) // weight only: not done yet
-        assertEquals(false, isLoggedSet(set(null, null)))
-    }
-
-    @Test
-    fun summary_countsWhatWillBeKeptAndRemoved() {
+    fun summary_countsDoneNotDoneAndEmptyExercises() {
         val summary = summarizeForFinish(
             listOf(
-                exercise(1, set(60.0, 8), set(60.0, null)),  // 1 logged, 1 removed
-                exercise(2, set(null, null)),                // whole exercise removed
-                exercise(3)                                  // no sets: removed
+                exercise(1, set(60.0, 8), set(60.0, 8, done = false)),
+                exercise(2, set(null, null, done = false)),
+                exercise(3) // no sets at all
             )
         )
-        assertEquals(FinishSummary(loggedSets = 1, setsToRemove = 2, exercisesToRemove = 2), summary)
-        assertEquals(false, summary.hasNothingLogged)
+        assertEquals(FinishSummary(doneSets = 1, notDoneSets = 2, emptyExercises = 1), summary)
+        assertEquals(false, summary.hasNothingDone)
     }
 
     @Test
-    fun summary_ofEmptyWorkout_hasNothingLogged() {
-        assertEquals(true, summarizeForFinish(emptyList()).hasNothingLogged)
-        assertEquals(true, summarizeForFinish(listOf(exercise(1, set(60.0, null)))).hasNothingLogged)
+    fun summary_withNoTickedSets_hasNothingDone() {
+        assertEquals(true, summarizeForFinish(emptyList()).hasNothingDone)
+        assertEquals(true, summarizeForFinish(listOf(exercise(1, set(60.0, 8, done = false)))).hasNothingDone)
     }
 
     @Test
-    fun cleanupMessage_readsNaturally() {
+    fun finishNotes_readNaturally() {
+        assertEquals(emptyList<String>(), finishNotes(FinishSummary(3, 0, 0)))
         assertEquals(
-            "1 set without reps will be removed.",
-            finishCleanupMessage(FinishSummary(loggedSets = 3, setsToRemove = 1, exercisesToRemove = 0))
+            listOf("1 set isn't ticked and will be saved as not done."),
+            finishNotes(FinishSummary(3, 1, 0))
         )
         assertEquals(
-            "2 sets without reps and 1 empty exercise will be removed.",
-            finishCleanupMessage(FinishSummary(loggedSets = 3, setsToRemove = 2, exercisesToRemove = 1))
-        )
-        assertEquals(
-            "2 empty exercises will be removed.",
-            finishCleanupMessage(FinishSummary(loggedSets = 3, setsToRemove = 0, exercisesToRemove = 2))
+            listOf(
+                "2 sets aren't ticked and will be saved as not done.",
+                "2 exercises with no sets will be removed."
+            ),
+            finishNotes(FinishSummary(3, 2, 2))
         )
     }
 }

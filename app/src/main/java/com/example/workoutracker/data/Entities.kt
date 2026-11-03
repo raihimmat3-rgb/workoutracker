@@ -89,7 +89,9 @@ data class WorkoutSetEntity(
     val reps: Int? = null,          // null for timed exercises
     val rpe: Double? = null,
     val durationSeconds: Int? = null,
-    val distanceMeters: Double? = null
+    val distanceMeters: Double? = null,
+    /** Ticked off during the workout. Added in database version 2 (see MIGRATION_1_2). */
+    @ColumnInfo(defaultValue = "0") val isDone: Boolean = false
 )
 
 object SetType {

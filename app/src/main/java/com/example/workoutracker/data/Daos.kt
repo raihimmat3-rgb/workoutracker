@@ -61,9 +61,9 @@ interface WorkoutDao {
     suspend fun getLastSet(workoutExerciseId: Long): WorkoutSetEntity?
 
     /**
-     * The sets you did for [exerciseId] the last time you trained it: taken from the most recent
-     * FINISHED workout containing it (other than [currentWorkoutId]). If that workout had the
-     * exercise twice, the first occurrence is used. Empty if there's no history yet.
+     * The sets you DID (ticked) for [exerciseId] the last time you trained it: taken from the most
+     * recent FINISHED workout where it has at least one ticked set (other than [currentWorkoutId]).
+     * If that workout had the exercise twice, the first occurrence is used. Empty if no history.
      */
     @Query(
         """
@@ -74,30 +74,37 @@ interface WorkoutDao {
             WHERE we.exerciseId = :exerciseId
               AND w.endedAt IS NOT NULL
               AND w.id != :currentWorkoutId
+              AND EXISTS (SELECT 1 FROM workout_set d WHERE d.workoutExerciseId = we.id AND d.isDone = 1)
             ORDER BY w.startedAt DESC, we.position ASC
             LIMIT 1
         )
+          AND s.isDone = 1
         ORDER BY s.setIndex
         """
     )
     suspend fun getPreviousSets(exerciseId: Long, currentWorkoutId: Long): List<WorkoutSetEntity>
 
-    /** Changes just the weight and reps of one set. Returns rows updated. */
-    @Query("UPDATE workout_set SET weightKg = :weightKg, reps = :reps WHERE id = :id")
+    /**
+     * Changes the weight and reps of one set. Clearing the reps also unticks the set,
+     * because a set can't be done without reps. Returns rows updated.
+     */
+    @Query(
+        """
+        UPDATE workout_set
+        SET weightKg = :weightKg,
+            reps = :reps,
+            isDone = CASE WHEN :reps IS NULL THEN 0 ELSE isDone END
+        WHERE id = :id
+        """
+    )
     suspend fun updateSetValues(id: Long, weightKg: Double?, reps: Int?): Int
+
+    /** Ticks or unticks a set. Ticking is refused (0 rows) if the set has no reps. */
+    @Query("UPDATE workout_set SET isDone = :isDone WHERE id = :id AND (:isDone = 0 OR reps IS NOT NULL)")
+    suspend fun setDone(id: Long, isDone: Boolean): Int
 
     @Query("DELETE FROM workout_set WHERE id = :id")
     suspend fun deleteSet(id: Long): Int
-
-    /** Deletes every set in this workout that has no reps entered. Returns how many. */
-    @Query(
-        """
-        DELETE FROM workout_set
-        WHERE reps IS NULL
-          AND workoutExerciseId IN (SELECT id FROM workout_exercise WHERE workoutId = :workoutId)
-        """
-    )
-    suspend fun deleteSetsWithoutReps(workoutId: Long): Int
 
     /** Deletes exercises in this workout that have no sets left. Returns how many. */
     @Query(

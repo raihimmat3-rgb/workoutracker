@@ -110,6 +110,11 @@ class ActiveWorkoutViewModel(
         viewModelScope.launch { dao.updateSetValues(setId, weightKg, reps) }
     }
 
+    /** Ticks or unticks a set. The database refuses to tick a set with no reps. */
+    fun setDone(setId: Long, isDone: Boolean) {
+        viewModelScope.launch { dao.setDone(setId, isDone) }
+    }
+
     fun deleteSet(setId: Long) {
         viewModelScope.launch { dao.deleteSet(setId) }
     }
@@ -136,11 +141,10 @@ class ActiveWorkoutViewModel(
             }
             // Tidy up and save in one transaction: either all of it happens or none of it.
             val rows = db.withTransaction {
-                // Same rule as summarizeForFinish: a set without reps doesn't count,
-                // and an exercise with no sets left isn't worth keeping.
-                val setsRemoved = dao.deleteSetsWithoutReps(workoutId)
+                // Unticked sets are kept (saved as not done). Only exercises with no sets
+                // at all are removed, matching summarizeForFinish.
                 val exercisesRemoved = dao.deleteExercisesWithoutSets(workoutId)
-                Log.d(TAG, "finish: removed $setsRemoved empty sets, $exercisesRemoved empty exercises")
+                Log.d(TAG, "finish: removed $exercisesRemoved empty exercises")
                 dao.updateWorkout(
                     current.copy(
                         title = title.trim().ifEmpty { current.title },

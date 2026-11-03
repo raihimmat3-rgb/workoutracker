@@ -8,9 +8,9 @@ import kotlin.math.roundToLong
 fun setVolume(weightKg: Double?, reps: Int?): Double =
     if (weightKg == null || reps == null) 0.0 else weightKg * reps
 
-/** Total volume of an exercise's sets, skipping sets with an empty box. */
+/** Total volume of an exercise: only ticked (done) sets count. */
 fun exerciseVolume(sets: List<WorkoutSetEntity>): Double =
-    sets.sumOf { setVolume(it.weightKg, it.reps) }
+    sets.filter { it.isDone }.sumOf { setVolume(it.weightKg, it.reps) }
 
 /**
  * Rounds to 1 decimal place first, because adding decimals can leave tiny errors
@@ -27,38 +27,42 @@ fun formatPrevious(weightKg: Double?, reps: Int?): String = when {
     else -> "—"
 }
 
-/**
- * The rule for what counts when finishing: a set is "logged" once it has reps.
- * Weight alone isn't enough (you haven't done the set yet); reps alone is fine (bodyweight).
- * The finish transaction's DELETE queries follow the same rule, so keep them in step.
- */
-fun isLoggedSet(set: WorkoutSetEntity): Boolean = set.reps != null
+/** A set can only be ticked once it has reps (bodyweight sets need no weight). */
+fun canTick(repsText: String): Boolean = parseReps(repsText) != null
 
-/** What finishing will keep and what it will tidy away. Shown in the Finish dialog. */
+/** What finishing will save, shown in the Finish dialog. */
 data class FinishSummary(
-    val loggedSets: Int,
-    val setsToRemove: Int,
-    val exercisesToRemove: Int
+    val doneSets: Int,
+    val notDoneSets: Int,
+    val emptyExercises: Int
 ) {
-    val hasNothingLogged: Boolean get() = loggedSets == 0
+    val hasNothingDone: Boolean get() = doneSets == 0
 }
 
+/**
+ * The finish rule: ticked sets count; unticked sets are kept but saved as not done;
+ * exercises with no sets at all are removed (the finish transaction does the same in SQL).
+ */
 fun summarizeForFinish(exercises: List<WorkoutExerciseWithSets>): FinishSummary {
     val allSets = exercises.flatMap { it.sets }
-    val logged = allSets.count(::isLoggedSet)
+    val done = allSets.count { it.isDone }
     return FinishSummary(
-        loggedSets = logged,
-        setsToRemove = allSets.size - logged,
-        exercisesToRemove = exercises.count { item -> item.sets.none(::isLoggedSet) }
+        doneSets = done,
+        notDoneSets = allSets.size - done,
+        emptyExercises = exercises.count { it.sets.isEmpty() }
     )
 }
 
-/** e.g. "2 sets without reps and 1 empty exercise will be removed." */
-fun finishCleanupMessage(summary: FinishSummary): String {
+/** The extra lines for the Finish dialog, e.g. "2 sets aren't ticked and will be saved as not done." */
+fun finishNotes(summary: FinishSummary): List<String> {
     fun plural(n: Int, word: String) = if (n == 1) "1 $word" else "$n ${word}s"
-    val parts = buildList {
-        if (summary.setsToRemove > 0) add(plural(summary.setsToRemove, "set") + " without reps")
-        if (summary.exercisesToRemove > 0) add(plural(summary.exercisesToRemove, "empty exercise"))
+    return buildList {
+        if (summary.notDoneSets > 0) {
+            val verb = if (summary.notDoneSets == 1) "isn't" else "aren't"
+            add("${plural(summary.notDoneSets, "set")} $verb ticked and will be saved as not done.")
+        }
+        if (summary.emptyExercises > 0) {
+            add("${plural(summary.emptyExercises, "exercise")} with no sets will be removed.")
+        }
     }
-    return parts.joinToString(" and ") + " will be removed."
 }

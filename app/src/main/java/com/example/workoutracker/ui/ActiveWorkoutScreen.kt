@@ -1,5 +1,7 @@
 package com.example.workoutracker.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +18,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -24,6 +26,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledIconToggleButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -40,10 +45,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -83,6 +92,7 @@ fun ActiveWorkoutScreen(
                 moveExercise = viewModel::moveExercise,
                 addSet = viewModel::addSet,
                 updateSet = viewModel::updateSet,
+                setDone = viewModel::setDone,
                 deleteSet = viewModel::deleteSet,
                 finish = { title, notes -> viewModel.finish(title, notes, onFinished) },
                 discard = { viewModel.discard(onDiscarded) }
@@ -99,6 +109,7 @@ private class WorkoutActions(
     val moveExercise: (workoutExerciseId: Long, up: Boolean) -> Unit,
     val addSet: (workoutExerciseId: Long) -> Unit,
     val updateSet: (setId: Long, weightKg: Double?, reps: Int?) -> Unit,
+    val setDone: (setId: Long, isDone: Boolean) -> Unit,
     val deleteSet: (setId: Long) -> Unit,
     val finish: (title: String, notes: String) -> Unit,
     val discard: () -> Unit
@@ -207,15 +218,15 @@ private fun ActiveWorkoutContent(
 
     if (confirmFinish) {
         val summary = summarizeForFinish(exercises)
-        if (summary.hasNothingLogged) {
+        if (summary.hasNothingDone) {
             // Saving an empty workout would just clutter History, so the only choices
             // are to carry on or throw it away.
             AlertDialog(
                 onDismissRequest = { confirmFinish = false },
-                title = { Text("Nothing logged yet") },
+                title = { Text("No sets ticked yet") },
                 text = {
                     Text(
-                        "Enter reps for at least one set before finishing. " +
+                        "Tick at least one set you've done before finishing. " +
                                 "Or discard this workout if you started it by mistake."
                     )
                 },
@@ -239,12 +250,9 @@ private fun ActiveWorkoutContent(
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("\"$shownTitle\" will be saved to your history.")
                         Text("Duration: ${formatElapsed(elapsed)}")
-                        Text("Sets logged: ${summary.loggedSets}")
-                        if (summary.setsToRemove > 0 || summary.exercisesToRemove > 0) {
-                            Text(
-                                finishCleanupMessage(summary),
-                                color = MaterialTheme.colorScheme.error
-                            )
+                        Text("Sets done: ${summary.doneSets}")
+                        finishNotes(summary).forEach { note ->
+                            Text(note, color = MaterialTheme.colorScheme.error)
                         }
                         if (isSuspiciouslyShort(elapsed)) {
                             Text(
@@ -345,6 +353,7 @@ private fun ExerciseBlock(
                             // Matched by set number (1st with 1st...), not setIndex, which can have gaps.
                             previous = previous.getOrNull(index),
                             onChange = { weightKg, reps -> actions.updateSet(set.id, weightKg, reps) },
+                            onDoneChange = { done -> actions.setDone(set.id, done) },
                             onDelete = { actions.deleteSet(set.id) }
                         )
                     }
@@ -363,10 +372,10 @@ private fun ExerciseBlock(
 @Composable
 private fun SetHeaderRow() {
     Row(
-        // End padding = delete button width + spacing, so the labels line up with the boxes.
+        // End padding = tick button width + spacing, so the labels line up with the boxes.
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp, end = DELETE_BUTTON_SIZE + ROW_SPACING),
+            .padding(top = 8.dp, end = TICK_BUTTON_SIZE + ROW_SPACING),
         horizontalArrangement = Arrangement.spacedBy(ROW_SPACING)
     ) {
         Text("Set", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(SET_NUMBER_WIDTH))
@@ -388,8 +397,10 @@ private fun SetRow(
     set: WorkoutSetEntity,
     previous: WorkoutSetEntity?,
     onChange: (weightKg: Double?, reps: Int?) -> Unit,
+    onDoneChange: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
+    var showMenu by remember { mutableStateOf(false) }
     // Seeded once from the database, then the boxes own the text (same reason as the title box).
     // Each keystroke is still saved straight away, so nothing is lost if the app is closed.
     var weightText by rememberSaveable { mutableStateOf(formatWeight(set.weightKg)) }
@@ -398,11 +409,35 @@ private fun SetRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 2.dp)
+            .clip(RoundedCornerShape(8.dp))
+            // Done sets get a tinted background, so you can see at a glance what you've completed.
+            .background(
+                if (set.isDone) MaterialTheme.colorScheme.primaryContainer
+                else Color.Transparent
+            )
+            .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(ROW_SPACING)
     ) {
-        Text("$number", style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(SET_NUMBER_WIDTH))
+        // Tap the set number for its menu (delete lives here now, to leave room for the tick).
+        Box {
+            Text(
+                "$number",
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .width(SET_NUMBER_WIDTH)
+                    .clickable { showMenu = true }
+                    .padding(vertical = 8.dp)
+            )
+            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("Delete set $number") },
+                    onClick = { showMenu = false; onDelete() }
+                )
+            }
+        }
         Text(
             text = formatPrevious(previous?.weightKg, previous?.reps),
             style = MaterialTheme.typography.labelSmall,
@@ -436,10 +471,16 @@ private fun SetRow(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             modifier = Modifier.weight(1f)
         )
-        IconButton(onClick = onDelete, modifier = Modifier.size(DELETE_BUTTON_SIZE)) {
+        FilledIconToggleButton(
+            checked = set.isDone,
+            onCheckedChange = onDoneChange,
+            // Needs reps first. Uses the box's text, so it enables the moment you type.
+            enabled = set.isDone || canTick(repsText),
+            modifier = Modifier.size(TICK_BUTTON_SIZE)
+        ) {
             Icon(
-                Icons.Default.Close,
-                contentDescription = "Delete set $number",
+                Icons.Default.Check,
+                contentDescription = if (set.isDone) "Untick set $number" else "Tick set $number as done",
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -448,7 +489,7 @@ private fun SetRow(
 
 // Sizes for the set table, in one place so the header and the rows always line up.
 private val SET_NUMBER_WIDTH = 24.dp
-private val DELETE_BUTTON_SIZE = 36.dp
+private val TICK_BUTTON_SIZE = 36.dp
 private val ROW_SPACING = 6.dp
 
 /** Centred numbers in the kg and reps boxes. */

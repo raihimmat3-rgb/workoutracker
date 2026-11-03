@@ -373,36 +373,61 @@ class WorkoutDaoTest {
     }
 
     @Test
-    fun finishCleanup_removesSetsWithoutRepsThenEmptyExercises() = runBlocking {
+    fun finishCleanup_removesOnlyExercisesWithNoSets() = runBlocking {
         val bench = newExercise("Bench")
         val fly = newExercise("Fly")
         val workoutId = workoutDao.insertWorkout(WorkoutEntity(title = "w", startedAt = 12_000L))
         val benchWe = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = bench, position = 0))
-        val flyWe = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = fly, position = 1))
-        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = benchWe, setIndex = 0, weightKg = 60.0, reps = 8))   // kept
-        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = benchWe, setIndex = 1, weightKg = 60.0, reps = null)) // removed
-        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = flyWe, setIndex = 0, weightKg = 15.0, reps = null))   // removed
+        workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = fly, position = 1)) // no sets
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = benchWe, setIndex = 0, weightKg = 60.0, reps = 8, isDone = true))
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = benchWe, setIndex = 1, weightKg = 60.0, reps = 8)) // not done: kept
 
-        assertEquals(2, workoutDao.deleteSetsWithoutReps(workoutId))
-        assertEquals(1, workoutDao.deleteExercisesWithoutSets(workoutId)) // Fly has nothing left
+        assertEquals(1, workoutDao.deleteExercisesWithoutSets(workoutId))
 
         assertEquals(1, countRows("workout_exercise"))
-        assertEquals(1, countRows("workout_set"))
-        assertEquals(2, countRows("exercise")) // the library is never touched
+        assertEquals(2, countRows("workout_set"))
     }
 
     @Test
-    fun finishCleanup_onlyTouchesThisWorkout() = runBlocking {
-        val squat = newExercise("Squat")
-        // Another workout with a set without reps: must be left alone.
-        val other = workoutDao.insertWorkout(WorkoutEntity(title = "other", startedAt = 13_000L))
-        val otherWe = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = other, exerciseId = squat, position = 0))
-        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = otherWe, setIndex = 0, weightKg = 100.0, reps = null))
-        val current = workoutDao.insertWorkout(WorkoutEntity(title = "current", startedAt = 14_000L))
+    fun setDone_needsReps() = runBlocking {
+        val curl = newExercise("Curl")
+        val workoutId = workoutDao.insertWorkout(WorkoutEntity(title = "w", startedAt = 15_000L))
+        val weId = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = curl, position = 0))
+        val withReps = workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = weId, setIndex = 0, weightKg = 20.0, reps = 10))
+        val noReps = workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = weId, setIndex = 1, weightKg = 20.0))
 
-        assertEquals(0, workoutDao.deleteSetsWithoutReps(current))
-        assertEquals(0, workoutDao.deleteExercisesWithoutSets(current))
-        assertEquals(1, countRows("workout_set"))
+        assertEquals(1, workoutDao.setDone(withReps, true))
+        assertEquals(0, workoutDao.setDone(noReps, true)) // refused
+        assertEquals(1, workoutDao.setDone(withReps, false)) // unticking always works
+    }
+
+    @Test
+    fun clearingReps_unticksTheSet() = runBlocking {
+        val curl = newExercise("Curl")
+        val workoutId = workoutDao.insertWorkout(WorkoutEntity(title = "w", startedAt = 16_000L))
+        val weId = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = curl, position = 0))
+        val setId = workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = weId, setIndex = 0, weightKg = 20.0, reps = 10, isDone = true))
+
+        workoutDao.updateSetValues(setId, 22.0, 10) // reps still there: stays done
+        assertEquals(true, workoutDao.observeDetails(workoutId).first()!!.exercises[0].sets[0].isDone)
+
+        workoutDao.updateSetValues(setId, 22.0, null) // reps cleared: unticked
+        assertEquals(false, workoutDao.observeDetails(workoutId).first()!!.exercises[0].sets[0].isDone)
+    }
+
+    @Test
+    fun getPreviousSets_ignoresUntickedSets() = runBlocking {
+        val bench = newExercise("Bench")
+        newWorkout(1_000L, bench, listOf(60.0 to 8)) // older, done
+        // Newer finished workout where Bench was added but nothing ticked: should be skipped.
+        val skipped = workoutDao.insertWorkout(WorkoutEntity(title = "x", startedAt = 2_000L, endedAt = 2_500L))
+        val weId = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = skipped, exerciseId = bench, position = 0))
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = weId, setIndex = 0, weightKg = 100.0, reps = 1))
+        val current = workoutDao.insertWorkout(WorkoutEntity(title = "now", startedAt = 3_000L))
+
+        val previous = workoutDao.getPreviousSets(bench, current)
+
+        assertEquals(listOf(8), previous.map { it.reps })
     }
 
 }
