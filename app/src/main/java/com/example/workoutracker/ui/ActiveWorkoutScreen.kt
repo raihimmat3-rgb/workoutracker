@@ -206,30 +206,62 @@ private fun ActiveWorkoutContent(
     }
 
     if (confirmFinish) {
-        val elapsed = rememberElapsedMillis(workout.startedAt)
-        val shownTitle = title.trim().ifEmpty { workout.title }
-        AlertDialog(
-            onDismissRequest = { confirmFinish = false },
-            title = { Text("Finish workout?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("\"$shownTitle\" will be saved to your history.")
-                    Text("Duration: ${formatElapsed(elapsed)}")
-                    if (isSuspiciouslyShort(elapsed)) {
-                        Text(
-                            "This workout is under a minute long. Did you mean to finish it?",
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
+        val summary = summarizeForFinish(exercises)
+        if (summary.hasNothingLogged) {
+            // Saving an empty workout would just clutter History, so the only choices
+            // are to carry on or throw it away.
+            AlertDialog(
+                onDismissRequest = { confirmFinish = false },
+                title = { Text("Nothing logged yet") },
+                text = {
+                    Text(
+                        "Enter reps for at least one set before finishing. " +
+                                "Or discard this workout if you started it by mistake."
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { confirmFinish = false }) { Text("Keep going") }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { confirmFinish = false; confirmDiscard = true },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) { Text("Discard") }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { confirmFinish = false; actions.finish(title, notes) }) { Text("Finish") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmFinish = false }) { Text("Keep going") }
-            }
-        )
+            )
+        } else {
+            val elapsed = rememberElapsedMillis(workout.startedAt)
+            val shownTitle = title.trim().ifEmpty { workout.title }
+            AlertDialog(
+                onDismissRequest = { confirmFinish = false },
+                title = { Text("Finish workout?") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("\"$shownTitle\" will be saved to your history.")
+                        Text("Duration: ${formatElapsed(elapsed)}")
+                        Text("Sets logged: ${summary.loggedSets}")
+                        if (summary.setsToRemove > 0 || summary.exercisesToRemove > 0) {
+                            Text(
+                                finishCleanupMessage(summary),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        if (isSuspiciouslyShort(elapsed)) {
+                            Text(
+                                "This workout is under a minute long. Did you mean to finish it?",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { confirmFinish = false; actions.finish(title, notes) }) { Text("Finish") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmFinish = false }) { Text("Keep going") }
+                }
+            )
+        }
     }
 
     pendingRemoval?.let { id ->

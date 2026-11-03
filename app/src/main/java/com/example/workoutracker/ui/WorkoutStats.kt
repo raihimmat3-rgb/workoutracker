@@ -1,5 +1,6 @@
 package com.example.workoutracker.ui
 
+import com.example.workoutracker.data.WorkoutExerciseWithSets
 import com.example.workoutracker.data.WorkoutSetEntity
 import kotlin.math.roundToLong
 
@@ -24,4 +25,40 @@ fun formatPrevious(weightKg: Double?, reps: Int?): String = when {
     weightKg != null -> "${formatWeight(weightKg)}kg"
     reps != null -> "$reps reps"
     else -> "—"
+}
+
+/**
+ * The rule for what counts when finishing: a set is "logged" once it has reps.
+ * Weight alone isn't enough (you haven't done the set yet); reps alone is fine (bodyweight).
+ * The finish transaction's DELETE queries follow the same rule, so keep them in step.
+ */
+fun isLoggedSet(set: WorkoutSetEntity): Boolean = set.reps != null
+
+/** What finishing will keep and what it will tidy away. Shown in the Finish dialog. */
+data class FinishSummary(
+    val loggedSets: Int,
+    val setsToRemove: Int,
+    val exercisesToRemove: Int
+) {
+    val hasNothingLogged: Boolean get() = loggedSets == 0
+}
+
+fun summarizeForFinish(exercises: List<WorkoutExerciseWithSets>): FinishSummary {
+    val allSets = exercises.flatMap { it.sets }
+    val logged = allSets.count(::isLoggedSet)
+    return FinishSummary(
+        loggedSets = logged,
+        setsToRemove = allSets.size - logged,
+        exercisesToRemove = exercises.count { item -> item.sets.none(::isLoggedSet) }
+    )
+}
+
+/** e.g. "2 sets without reps and 1 empty exercise will be removed." */
+fun finishCleanupMessage(summary: FinishSummary): String {
+    fun plural(n: Int, word: String) = if (n == 1) "1 $word" else "$n ${word}s"
+    val parts = buildList {
+        if (summary.setsToRemove > 0) add(plural(summary.setsToRemove, "set") + " without reps")
+        if (summary.exercisesToRemove > 0) add(plural(summary.exercisesToRemove, "empty exercise"))
+    }
+    return parts.joinToString(" and ") + " will be removed."
 }

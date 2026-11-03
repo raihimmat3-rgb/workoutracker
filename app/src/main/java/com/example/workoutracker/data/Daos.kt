@@ -89,6 +89,26 @@ interface WorkoutDao {
     @Query("DELETE FROM workout_set WHERE id = :id")
     suspend fun deleteSet(id: Long): Int
 
+    /** Deletes every set in this workout that has no reps entered. Returns how many. */
+    @Query(
+        """
+        DELETE FROM workout_set
+        WHERE reps IS NULL
+          AND workoutExerciseId IN (SELECT id FROM workout_exercise WHERE workoutId = :workoutId)
+        """
+    )
+    suspend fun deleteSetsWithoutReps(workoutId: Long): Int
+
+    /** Deletes exercises in this workout that have no sets left. Returns how many. */
+    @Query(
+        """
+        DELETE FROM workout_exercise
+        WHERE workoutId = :workoutId
+          AND id NOT IN (SELECT DISTINCT workoutExerciseId FROM workout_set)
+        """
+    )
+    suspend fun deleteExercisesWithoutSets(workoutId: Long): Int
+
     /** Returns how many rows were updated (1 if it worked, 0 if no workout had that id). */
     @Update
     suspend fun updateWorkout(workout: WorkoutEntity): Int

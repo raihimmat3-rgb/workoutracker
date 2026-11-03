@@ -134,13 +134,21 @@ class ActiveWorkoutViewModel(
                 showError("Couldn't find this workout (id $workoutId) to save it")
                 return@launch
             }
-            val rows = dao.updateWorkout(
-                current.copy(
-                    title = title.trim().ifEmpty { current.title },
-                    notes = notes.trim().ifEmpty { null },
-                    endedAt = System.currentTimeMillis()
+            // Tidy up and save in one transaction: either all of it happens or none of it.
+            val rows = db.withTransaction {
+                // Same rule as summarizeForFinish: a set without reps doesn't count,
+                // and an exercise with no sets left isn't worth keeping.
+                val setsRemoved = dao.deleteSetsWithoutReps(workoutId)
+                val exercisesRemoved = dao.deleteExercisesWithoutSets(workoutId)
+                Log.d(TAG, "finish: removed $setsRemoved empty sets, $exercisesRemoved empty exercises")
+                dao.updateWorkout(
+                    current.copy(
+                        title = title.trim().ifEmpty { current.title },
+                        notes = notes.trim().ifEmpty { null },
+                        endedAt = System.currentTimeMillis()
+                    )
                 )
-            )
+            }
             Log.d(TAG, "finish: workout $workoutId, title='${title.trim()}', rows updated=$rows")
             if (rows == 1) onDone() else showError("Couldn't save the workout (rows updated: $rows)")
         }

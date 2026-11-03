@@ -372,4 +372,37 @@ class WorkoutDaoTest {
         assertEquals(0, workoutDao.getPreviousSets(curl, current).size)
     }
 
+    @Test
+    fun finishCleanup_removesSetsWithoutRepsThenEmptyExercises() = runBlocking {
+        val bench = newExercise("Bench")
+        val fly = newExercise("Fly")
+        val workoutId = workoutDao.insertWorkout(WorkoutEntity(title = "w", startedAt = 12_000L))
+        val benchWe = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = bench, position = 0))
+        val flyWe = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = fly, position = 1))
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = benchWe, setIndex = 0, weightKg = 60.0, reps = 8))   // kept
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = benchWe, setIndex = 1, weightKg = 60.0, reps = null)) // removed
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = flyWe, setIndex = 0, weightKg = 15.0, reps = null))   // removed
+
+        assertEquals(2, workoutDao.deleteSetsWithoutReps(workoutId))
+        assertEquals(1, workoutDao.deleteExercisesWithoutSets(workoutId)) // Fly has nothing left
+
+        assertEquals(1, countRows("workout_exercise"))
+        assertEquals(1, countRows("workout_set"))
+        assertEquals(2, countRows("exercise")) // the library is never touched
+    }
+
+    @Test
+    fun finishCleanup_onlyTouchesThisWorkout() = runBlocking {
+        val squat = newExercise("Squat")
+        // Another workout with a set without reps: must be left alone.
+        val other = workoutDao.insertWorkout(WorkoutEntity(title = "other", startedAt = 13_000L))
+        val otherWe = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = other, exerciseId = squat, position = 0))
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = otherWe, setIndex = 0, weightKg = 100.0, reps = null))
+        val current = workoutDao.insertWorkout(WorkoutEntity(title = "current", startedAt = 14_000L))
+
+        assertEquals(0, workoutDao.deleteSetsWithoutReps(current))
+        assertEquals(0, workoutDao.deleteExercisesWithoutSets(current))
+        assertEquals(1, countRows("workout_set"))
+    }
+
 }
