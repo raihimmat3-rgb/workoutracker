@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -45,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -277,7 +279,7 @@ private fun ExerciseBlock(
 ) {
     val weId = item.workoutExercise.id
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp)) {
+        Column(modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp, end = 4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(item.exercise.name, style = MaterialTheme.typography.titleMedium)
@@ -329,16 +331,22 @@ private fun ExerciseBlock(
 @Composable
 private fun SetHeaderRow() {
     Row(
-        // End padding matches the delete button's width so the labels line up with the boxes.
+        // End padding = delete button width + spacing, so the labels line up with the boxes.
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp, end = 48.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(top = 8.dp, end = DELETE_BUTTON_SIZE + ROW_SPACING),
+        horizontalArrangement = Arrangement.spacedBy(ROW_SPACING)
     ) {
-        Text("Set", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(32.dp))
-        Text("Previous", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1.2f))
-        Text("kg", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-        Text("Reps", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+        Text("Set", style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(SET_NUMBER_WIDTH))
+        Text("Previous", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+        Text(
+            "kg", style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            "Reps", style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
@@ -360,13 +368,14 @@ private fun SetRow(
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(ROW_SPACING)
     ) {
-        Text("$number", style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(32.dp))
+        Text("$number", style = MaterialTheme.typography.titleMedium, modifier = Modifier.width(SET_NUMBER_WIDTH))
         Text(
             text = formatPrevious(previous?.weightKg, previous?.reps),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.weight(1.2f)
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 2,
+            modifier = Modifier.weight(1f)
         )
         OutlinedTextField(
             value = weightText,
@@ -377,8 +386,8 @@ private fun SetRow(
                     onChange(parseWeight(new), parseReps(repsText))
                 }
             },
-            placeholder = { Text("kg") },
             singleLine = true,
+            textStyle = numberBoxStyle(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
             modifier = Modifier.weight(1f)
         )
@@ -390,13 +399,27 @@ private fun SetRow(
                     onChange(parseWeight(weightText), parseReps(new))
                 }
             },
-            placeholder = { Text("reps") },
             singleLine = true,
+            textStyle = numberBoxStyle(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
             modifier = Modifier.weight(1f)
         )
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Close, contentDescription = "Delete set $number")
+        IconButton(onClick = onDelete, modifier = Modifier.size(DELETE_BUTTON_SIZE)) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "Delete set $number",
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
+
+// Sizes for the set table, in one place so the header and the rows always line up.
+private val SET_NUMBER_WIDTH = 24.dp
+private val DELETE_BUTTON_SIZE = 36.dp
+private val ROW_SPACING = 6.dp
+
+/** Centred numbers in the kg and reps boxes. */
+@Composable
+private fun numberBoxStyle() =
+    MaterialTheme.typography.bodyLarge.copy(textAlign = TextAlign.Center)
