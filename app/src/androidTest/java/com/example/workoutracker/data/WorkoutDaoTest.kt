@@ -430,4 +430,34 @@ class WorkoutDaoTest {
         assertEquals(listOf(8), previous.map { it.reps })
     }
 
+    @Test
+    fun historySummaries_countOnlyDoneSets() = runBlocking {
+        val bench = newExercise("Bench")
+        val legRaise = newExercise("Leg Raise")
+        val workoutId = workoutDao.insertWorkout(
+            WorkoutEntity(title = "Upper", startedAt = 20_000L, endedAt = 20_000L + 3_600_000)
+        )
+        val benchWe = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = bench, position = 0))
+        val raiseWe = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = workoutId, exerciseId = legRaise, position = 1))
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = benchWe, setIndex = 0, weightKg = 60.0, reps = 8, isDone = true))   // 480
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = benchWe, setIndex = 1, weightKg = 60.0, reps = 7, isDone = true))   // 420
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = benchWe, setIndex = 2, weightKg = 100.0, reps = 5))                 // not done
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = raiseWe, setIndex = 0, weightKg = null, reps = 12, isDone = true))  // bodyweight
+
+        val summary = workoutDao.observeHistorySummaries().first().single()
+
+        assertEquals("Upper", summary.title)
+        assertEquals(2, summary.exerciseCount)
+        assertEquals(3, summary.doneSets)
+        assertEquals(900.0, summary.volumeKg, 0.0001)
+    }
+
+    @Test
+    fun historySummaries_skipUnfinishedWorkouts() = runBlocking {
+        workoutDao.insertWorkout(WorkoutEntity(title = "in progress", startedAt = 21_000L))
+
+        assertEquals(0, workoutDao.observeHistorySummaries().first().size)
+    }
+
+
 }

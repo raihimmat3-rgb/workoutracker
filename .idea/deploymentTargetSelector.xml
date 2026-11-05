@@ -4,10 +4,10 @@
     <selectionStates>
       <SelectionState runConfigName="app">
         <option name="selectionMode" value="DROPDOWN" />
-        <DropdownSelection timestamp="2026-10-19T20:49:27.647308378Z">
+        <DropdownSelection timestamp="2026-11-05T18:13:50.258673874Z">
           <Target type="DEFAULT_BOOT">
             <handle>
-              <DeviceId pluginId="LocalEmulator" identifier="path=/home/himmat/.android/avd/Medium_Phone.avd" />
+              <DeviceId pluginId="Wireless" identifier="serviceName=adb-3B15BH00H5C00000-l3UlH1" />
             </handle>
           </Target>
         </DropdownSelection>

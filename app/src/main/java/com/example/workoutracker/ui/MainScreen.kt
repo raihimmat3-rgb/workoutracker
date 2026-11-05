@@ -33,6 +33,9 @@ private enum class Tab(val route: String, val label: String, val icon: ImageVect
 private const val WORKOUT_ROUTE = "workout/{workoutId}"
 private fun workoutRoute(id: Long) = "workout/$id"
 
+private const val DETAIL_ROUTE = "history/{workoutId}"
+private fun detailRoute(id: Long) = "history/$id"
+
 private const val ADD_EXERCISE_ROUTE = "workout/{workoutId}/add-exercise"
 private fun addExerciseRoute(id: Long) = "workout/$id/add-exercise"
 
@@ -99,7 +102,22 @@ fun MainScreen() {
                     }
                 )
             }
-            composable(Tab.History.route) { HistoryScreen() }
+            composable(Tab.History.route) {
+                HistoryScreen(
+                    onOpenWorkout = { id ->
+                        navController.navigate(detailRoute(id)) { launchSingleTop = true }
+                    }
+                )
+            }
+            composable(
+                route = DETAIL_ROUTE,
+                arguments = listOf(navArgument("workoutId") { type = NavType.LongType })
+            ) {
+                WorkoutDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onDeleted = { navController.popBackStack() }
+                )
+            }
             composable(Tab.Exercises.route) { ExercisesScreen() }
             composable(
                 route = WORKOUT_ROUTE,

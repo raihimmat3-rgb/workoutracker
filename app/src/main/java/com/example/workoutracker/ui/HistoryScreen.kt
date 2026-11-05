@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -24,19 +23,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.workoutracker.data.WorkoutEntity
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
+import com.example.workoutracker.data.WorkoutSummary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
+    onOpenWorkout: (Long) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HistoryViewModel = viewModel()
 ) {
-    // Re-reads whenever the database changes, and stops collecting when the app is in the background.
     val workouts by viewModel.workouts.collectAsStateWithLifecycle()
 
     Scaffold(
@@ -45,75 +40,56 @@ fun HistoryScreen(
             TopAppBar(
                 title = { Text("History") },
                 actions = {
+                    // TEMPORARY: remove once the Hevy import exists (Week 4).
                     TextButton(onClick = viewModel::addSampleData) { Text("Add sample data") }
                 }
             )
         }
     ) { padding ->
         if (workouts.isEmpty()) {
-            EmptyState(padding)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("No workouts yet", style = MaterialTheme.typography.bodyLarge)
+            }
         } else {
-            WorkoutList(workouts = workouts, padding = padding, onDelete = viewModel::delete)
-        }
-    }
-}
-
-@Composable
-private fun EmptyState(padding: PaddingValues) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(padding),
-        contentAlignment = Alignment.Center
-    ) {
-        Text("No workouts yet", style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
-@Composable
-private fun WorkoutList(
-    workouts: List<WorkoutEntity>,
-    padding: PaddingValues,
-    onDelete: (Long) -> Unit
-) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(padding),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // key = id lets Compose track each row correctly when the list changes.
-        items(workouts, key = { it.id }) { workout ->
-            WorkoutCard(workout = workout, onDelete = { onDelete(workout.id) })
-        }
-    }
-}
-
-@Composable
-private fun WorkoutCard(workout: WorkoutEntity, onDelete: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(workout.title, style = MaterialTheme.typography.titleMedium)
-                Text(formatStart(workout.startedAt), style = MaterialTheme.typography.bodyMedium)
-                workout.endedAt?.let { end ->
-                    val minutes = (end - workout.startedAt) / 60_000
-                    Text("$minutes min", style = MaterialTheme.typography.bodySmall)
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(workouts, key = { it.id }) { summary ->
+                    WorkoutSummaryCard(summary = summary, onClick = { onOpenWorkout(summary.id) })
                 }
             }
-            TextButton(onClick = onDelete) { Text("Delete") }
         }
     }
 }
 
-private val dateFormatter: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("EEE d MMM yyyy, HH:mm", Locale.getDefault())
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WorkoutSummaryCard(summary: WorkoutSummary, onClick: () -> Unit) {
+    // e.g. "1h 5m · 6 exercises · 18 sets · 9,420 kg"
+    val stats = listOfNotNull(
+        summary.endedAt?.let { formatDuration(it - summary.startedAt) },
+        countLabel(summary.exerciseCount, "exercise"),
+        countLabel(summary.doneSets, "set"),
+        if (summary.volumeKg > 0) "${formatVolume(summary.volumeKg)} kg" else null
+    ).joinToString(" · ")
 
-private fun formatStart(epochMillis: Long): String =
-    Instant.ofEpochMilli(epochMillis)
-        .atZone(ZoneId.systemDefault())
-        .format(dateFormatter)
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(summary.title, style = MaterialTheme.typography.titleMedium)
+            Text(formatWorkoutDate(summary.startedAt), style = MaterialTheme.typography.bodyMedium)
+            Text(stats, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}

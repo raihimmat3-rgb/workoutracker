@@ -140,6 +140,28 @@ interface WorkoutDao {
     @Query("SELECT * FROM workout WHERE endedAt IS NULL ORDER BY startedAt DESC LIMIT 1")
     suspend fun getActive(): WorkoutEntity?
 
+    /**
+     * Finished workouts with their totals, newest first, for the History list.
+     * Only ticked (done) sets count towards sets and volume. weightKg * reps is NULL for
+     * bodyweight sets, and SUM skips NULLs, so they add nothing to volume.
+     */
+    @Query(
+        """
+        SELECT w.id, w.title, w.startedAt, w.endedAt, w.source,
+            (SELECT COUNT(*) FROM workout_exercise we WHERE we.workoutId = w.id) AS exerciseCount,
+            (SELECT COUNT(*) FROM workout_set s
+                JOIN workout_exercise we ON we.id = s.workoutExerciseId
+                WHERE we.workoutId = w.id AND s.isDone = 1) AS doneSets,
+            (SELECT COALESCE(SUM(s.weightKg * s.reps), 0) FROM workout_set s
+                JOIN workout_exercise we ON we.id = s.workoutExerciseId
+                WHERE we.workoutId = w.id AND s.isDone = 1) AS volumeKg
+        FROM workout w
+        WHERE w.endedAt IS NOT NULL
+        ORDER BY w.startedAt DESC
+        """
+    )
+    fun observeHistorySummaries(): Flow<List<WorkoutSummary>>
+
     /** Finished workouts only, newest first, for the history list. */
     @Query("SELECT * FROM workout WHERE endedAt IS NOT NULL ORDER BY startedAt DESC")
     fun observeHistory(): Flow<List<WorkoutEntity>>
