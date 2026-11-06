@@ -161,10 +161,10 @@ class ActiveWorkoutViewModel(
     private var saving = false
 
     /**
-     * Saves changes to an already-finished workout (edit mode). Unlike [finish], it keeps the
-     * original end time, so the workout's date and duration don't change.
+     * Saves changes to an already-finished workout (edit mode). Unlike [finish], it doesn't stamp
+     * a new end time. If [newStartedAt] differs, the whole workout moves there and keeps its duration.
      */
-    fun saveEdits(title: String, notes: String, onDone: () -> Unit) {
+    fun saveEdits(title: String, notes: String, newStartedAt: Long, onDone: () -> Unit) {
         if (saving) return // Save and the back button could both fire; only save once
         saving = true
         viewModelScope.launch {
@@ -174,13 +174,32 @@ class ActiveWorkoutViewModel(
                 showError("Couldn't find this workout (id $workoutId) to save it")
                 return@launch
             }
+            val (start, end) = shiftWorkoutTimes(
+                startedAt = current.startedAt,
+                endedAt = current.endedAt ?: current.startedAt,
+                newStartedAt = newStartedAt
+            )
+            if (end > System.currentTimeMillis()) {
+                saving = false
+                showError("That start time would put the end of the workout in the future")
+                return@launch
+            }
+            // startedAt is unique (it's how imports spot duplicates), so check before saving
+            // rather than letting the database throw.
+            if (start != current.startedAt && dao.existsByStartedAt(start)) {
+                saving = false
+                showError("Another workout already starts at exactly that time")
+                return@launch
+            }
             val rows = db.withTransaction {
                 // Same tidy-up as finishing: exercises left with no sets are removed.
                 dao.deleteExercisesWithoutSets(workoutId)
                 dao.updateWorkout(
                     current.copy(
                         title = title.trim().ifEmpty { current.title },
-                        notes = notes.trim().ifEmpty { null }
+                        notes = notes.trim().ifEmpty { null },
+                        startedAt = start,
+                        endedAt = end
                     )
                 )
             }

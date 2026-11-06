@@ -45,6 +45,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -97,7 +98,7 @@ fun ActiveWorkoutScreen(
                 setDone = viewModel::setDone,
                 deleteSet = viewModel::deleteSet,
                 finish = { title, notes -> viewModel.finish(title, notes, onFinished) },
-                saveEdits = { title, notes -> viewModel.saveEdits(title, notes, onSaved) },
+                saveEdits = { title, notes, startedAt -> viewModel.saveEdits(title, notes, startedAt, onSaved) },
                 discard = { viewModel.discard(onDiscarded) }
             ),
             modifier = modifier
@@ -115,7 +116,7 @@ private class WorkoutActions(
     val setDone: (setId: Long, isDone: Boolean) -> Unit,
     val deleteSet: (setId: Long) -> Unit,
     val finish: (title: String, notes: String) -> Unit,
-    val saveEdits: (title: String, notes: String) -> Unit,
+    val saveEdits: (title: String, notes: String, startedAt: Long) -> Unit,
     val discard: () -> Unit
 )
 
@@ -141,12 +142,15 @@ private fun ActiveWorkoutContent(
     // A workout that already has an end time is being edited from History, not done live.
     // The same screen serves both: edit mode has no timer and no discard, and saves on exit.
     val isEditing = workout.endedAt != null
+    // Edit mode only: a new start time chosen with the picker, saved along with the title.
+    var editedStartedAt by rememberSaveable { mutableLongStateOf(workout.startedAt) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
     fun trySave() {
         // Same rule as finishing: at least one ticked set, otherwise show the warning.
         if (summarizeForFinish(exercises).hasNothingDone) {
             confirmFinish = true
         } else {
-            actions.saveEdits(title, notes)
+            actions.saveEdits(title, notes, editedStartedAt)
         }
     }
     // In edit mode, the system back button saves too, so changes are never half-kept.
@@ -178,11 +182,16 @@ private fun ActiveWorkoutContent(
         ) {
             val endedAt = workout.endedAt
             if (endedAt != null) {
-                // Editing: the workout's time is fixed, so show it rather than a running clock.
-                Text(
-                    "${formatWorkoutDate(workout.startedAt)} \u00B7 ${formatDuration(endedAt - workout.startedAt)}",
-                    style = MaterialTheme.typography.titleMedium
-                )
+                // Editing: no running clock. Shows the (possibly changed) start, the unchanged
+                // duration, and a button to move the workout to another day or time.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${formatWorkoutDate(editedStartedAt)} \u00B7 ${formatDuration(endedAt - workout.startedAt)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { showDatePicker = true }) { Text("Change") }
+                }
             } else {
                 // The timer has its own composable so only it redraws every second,
                 // not the whole screen full of text boxes.
@@ -316,6 +325,17 @@ private fun ActiveWorkoutContent(
                 }
             )
         }
+    }
+
+    if (showDatePicker) {
+        WorkoutDateTimePicker(
+            startedAt = editedStartedAt,
+            onPicked = { newStart ->
+                editedStartedAt = newStart
+                showDatePicker = false
+            },
+            onDismiss = { showDatePicker = false }
+        )
     }
 
     pendingRemoval?.let { id ->
