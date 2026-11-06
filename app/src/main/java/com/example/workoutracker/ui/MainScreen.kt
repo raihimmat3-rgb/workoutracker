@@ -115,7 +115,10 @@ fun MainScreen() {
             ) {
                 WorkoutDetailScreen(
                     onBack = { navController.popBackStack() },
-                    onDeleted = { navController.popBackStack() }
+                    onDeleted = { navController.popBackStack() },
+                    // Editing reuses the workout screen; it switches to edit mode by itself
+                    // because the workout is already finished.
+                    onEdit = { id -> navController.navigate(workoutRoute(id)) { launchSingleTop = true } }
                 )
             }
             composable(Tab.Exercises.route) { ExercisesScreen() }
@@ -132,6 +135,8 @@ fun MainScreen() {
                         navController.navigateToTab(Tab.History.route)
                     },
                     onDiscarded = { navController.popBackStack() },
+                    // After editing, go back to the detail screen, which updates from the database.
+                    onSaved = { navController.popBackStack() },
                     onAddExercise = { id ->
                         navController.navigate(addExerciseRoute(id)) { launchSingleTop = true }
                     }

@@ -1,5 +1,6 @@
 package com.example.workoutracker.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -67,6 +68,7 @@ import com.example.workoutracker.data.WorkoutSetEntity
 fun ActiveWorkoutScreen(
     onFinished: () -> Unit,
     onDiscarded: () -> Unit,
+    onSaved: () -> Unit,
     onAddExercise: (workoutId: Long) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ActiveWorkoutViewModel = viewModel()
@@ -95,6 +97,7 @@ fun ActiveWorkoutScreen(
                 setDone = viewModel::setDone,
                 deleteSet = viewModel::deleteSet,
                 finish = { title, notes -> viewModel.finish(title, notes, onFinished) },
+                saveEdits = { title, notes -> viewModel.saveEdits(title, notes, onSaved) },
                 discard = { viewModel.discard(onDiscarded) }
             ),
             modifier = modifier
@@ -112,6 +115,7 @@ private class WorkoutActions(
     val setDone: (setId: Long, isDone: Boolean) -> Unit,
     val deleteSet: (setId: Long) -> Unit,
     val finish: (title: String, notes: String) -> Unit,
+    val saveEdits: (title: String, notes: String) -> Unit,
     val discard: () -> Unit
 )
 
@@ -134,16 +138,32 @@ private fun ActiveWorkoutContent(
     // The id of an exercise waiting for "remove?" confirmation, or null.
     var pendingRemoval by rememberSaveable { mutableStateOf<Long?>(null) }
 
+    // A workout that already has an end time is being edited from History, not done live.
+    // The same screen serves both: edit mode has no timer and no discard, and saves on exit.
+    val isEditing = workout.endedAt != null
+    fun trySave() {
+        // Same rule as finishing: at least one ticked set, otherwise show the warning.
+        if (summarizeForFinish(exercises).hasNothingDone) {
+            confirmFinish = true
+        } else {
+            actions.saveEdits(title, notes)
+        }
+    }
+    // In edit mode, the system back button saves too, so changes are never half-kept.
+    BackHandler(enabled = isEditing) { trySave() }
+
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
-                title = { Text("Active workout") },
+                title = { Text(if (isEditing) "Edit workout" else "Active workout") },
                 actions = {
                     Button(
-                        onClick = { confirmFinish = true },
+                        onClick = {
+                            if (isEditing) trySave() else { confirmFinish = true }
+                        },
                         modifier = Modifier.padding(end = 8.dp)
-                    ) { Text("Finish") }
+                    ) { Text(if (isEditing) "Save" else "Finish") }
                 }
             )
         }
@@ -156,9 +176,18 @@ private fun ActiveWorkoutContent(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // The timer has its own composable so only it redraws every second,
-            // not the whole screen full of text boxes.
-            ElapsedText(workout.startedAt)
+            val endedAt = workout.endedAt
+            if (endedAt != null) {
+                // Editing: the workout's time is fixed, so show it rather than a running clock.
+                Text(
+                    "${formatWorkoutDate(workout.startedAt)} \u00B7 ${formatDuration(endedAt - workout.startedAt)}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            } else {
+                // The timer has its own composable so only it redraws every second,
+                // not the whole screen full of text boxes.
+                ElapsedText(workout.startedAt)
+            }
 
             OutlinedTextField(
                 value = title,
@@ -206,19 +235,36 @@ private fun ActiveWorkoutContent(
                 Text("Add exercise")
             }
 
-            OutlinedButton(
-                onClick = { confirmDiscard = true },
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                ),
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Discard workout") }
+            // Deleting a finished workout lives on its detail screen, so no discard when editing.
+            if (!isEditing) {
+                OutlinedButton(
+                    onClick = { confirmDiscard = true },
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Discard workout") }
+            }
         }
     }
 
     if (confirmFinish) {
         val summary = summarizeForFinish(exercises)
-        if (summary.hasNothingDone) {
+        if (summary.hasNothingDone && isEditing) {
+            AlertDialog(
+                onDismissRequest = { confirmFinish = false },
+                title = { Text("No sets ticked") },
+                text = {
+                    Text(
+                        "A saved workout needs at least one ticked set. " +
+                                "To remove this workout instead, delete it from its detail screen."
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { confirmFinish = false }) { Text("Keep editing") }
+                }
+            )
+        } else if (summary.hasNothingDone) {
             // Saving an empty workout would just clutter History, so the only choices
             // are to carry on or throw it away.
             AlertDialog(

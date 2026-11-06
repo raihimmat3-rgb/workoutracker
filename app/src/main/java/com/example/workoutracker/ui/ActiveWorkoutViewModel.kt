@@ -158,6 +158,42 @@ class ActiveWorkoutViewModel(
         }
     }
 
+    private var saving = false
+
+    /**
+     * Saves changes to an already-finished workout (edit mode). Unlike [finish], it keeps the
+     * original end time, so the workout's date and duration don't change.
+     */
+    fun saveEdits(title: String, notes: String, onDone: () -> Unit) {
+        if (saving) return // Save and the back button could both fire; only save once
+        saving = true
+        viewModelScope.launch {
+            val current = dao.getById(workoutId)
+            if (current == null) {
+                saving = false
+                showError("Couldn't find this workout (id $workoutId) to save it")
+                return@launch
+            }
+            val rows = db.withTransaction {
+                // Same tidy-up as finishing: exercises left with no sets are removed.
+                dao.deleteExercisesWithoutSets(workoutId)
+                dao.updateWorkout(
+                    current.copy(
+                        title = title.trim().ifEmpty { current.title },
+                        notes = notes.trim().ifEmpty { null }
+                    )
+                )
+            }
+            Log.d(TAG, "saveEdits: workout $workoutId, rows updated=$rows")
+            if (rows == 1) {
+                onDone()
+            } else {
+                saving = false
+                showError("Couldn't save your changes (rows updated: $rows)")
+            }
+        }
+    }
+
     /** Deletes the workout (and, via cascade, anything logged in it), then calls [onDone]. */
     fun discard(onDone: () -> Unit) {
         viewModelScope.launch {
