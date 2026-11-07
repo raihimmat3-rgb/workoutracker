@@ -21,6 +21,9 @@ interface ExerciseDao {
     @Query("SELECT * FROM exercise ORDER BY name")
     fun observeAll(): Flow<List<ExerciseEntity>>
 
+    @Query("SELECT * FROM exercise WHERE id = :id")
+    fun observeById(id: Long): Flow<ExerciseEntity?>
+
     @Query("SELECT * FROM exercise WHERE name LIKE '%' || :query || '%' ORDER BY name")
     fun search(query: String): Flow<List<ExerciseEntity>>
 }
@@ -45,6 +48,90 @@ interface WorkoutDao {
 
     @Query("UPDATE workout_exercise SET position = :position WHERE id = :id")
     suspend fun updatePosition(id: Long, position: Int): Int
+
+    /** Removes every exercise (and, by cascade, every set) from a workout. Used to undo edits. */
+    @Query("DELETE FROM workout_exercise WHERE workoutId = :workoutId")
+    suspend fun deleteExercisesInWorkout(workoutId: Long): Int
+
+    // ---- Personal bests (Day 17) ----
+    // All of these only look at TICKED sets in FINISHED workouts. Ties go to the earliest
+    // workout, because that's when the record was first set.
+
+    /** Heaviest weight lifted; more reps wins a tie on weight. */
+    @Query(
+        """
+        SELECT s.weightKg, s.reps, w.startedAt, w.id AS workoutId
+        FROM workout_set s
+        JOIN workout_exercise we ON we.id = s.workoutExerciseId
+        JOIN workout w ON w.id = we.workoutId
+        WHERE we.exerciseId = :exerciseId AND s.isDone = 1 AND w.endedAt IS NOT NULL
+          AND s.weightKg IS NOT NULL
+        ORDER BY s.weightKg DESC, s.reps DESC, w.startedAt ASC
+        LIMIT 1
+        """
+    )
+    fun observeHeaviestSet(exerciseId: Long): Flow<SetRecord?>
+
+    /**
+     * Best estimated one-rep max (Epley: weight x (1 + reps / 30)). A single rep counts as
+     * exactly its weight. Must match estimateOneRepMax() in Kotlin.
+     */
+    @Query(
+        """
+        SELECT s.weightKg, s.reps, w.startedAt, w.id AS workoutId
+        FROM workout_set s
+        JOIN workout_exercise we ON we.id = s.workoutExerciseId
+        JOIN workout w ON w.id = we.workoutId
+        WHERE we.exerciseId = :exerciseId AND s.isDone = 1 AND w.endedAt IS NOT NULL
+          AND s.weightKg IS NOT NULL AND s.reps IS NOT NULL AND s.reps > 0
+        ORDER BY CASE WHEN s.reps = 1 THEN s.weightKg ELSE s.weightKg * (1 + s.reps / 30.0) END DESC,
+                 w.startedAt ASC
+        LIMIT 1
+        """
+    )
+    fun observeBestOneRepMaxSet(exerciseId: Long): Flow<SetRecord?>
+
+    /** Most reps in one set (useful for bodyweight); heavier wins a tie on reps. */
+    @Query(
+        """
+        SELECT s.weightKg, s.reps, w.startedAt, w.id AS workoutId
+        FROM workout_set s
+        JOIN workout_exercise we ON we.id = s.workoutExerciseId
+        JOIN workout w ON w.id = we.workoutId
+        WHERE we.exerciseId = :exerciseId AND s.isDone = 1 AND w.endedAt IS NOT NULL
+          AND s.reps IS NOT NULL
+        ORDER BY s.reps DESC, s.weightKg DESC, w.startedAt ASC
+        LIMIT 1
+        """
+    )
+    fun observeMostRepsSet(exerciseId: Long): Flow<SetRecord?>
+
+    /** Biggest single-set volume (weight x reps). */
+    @Query(
+        """
+        SELECT s.weightKg, s.reps, w.startedAt, w.id AS workoutId
+        FROM workout_set s
+        JOIN workout_exercise we ON we.id = s.workoutExerciseId
+        JOIN workout w ON w.id = we.workoutId
+        WHERE we.exerciseId = :exerciseId AND s.isDone = 1 AND w.endedAt IS NOT NULL
+          AND s.weightKg IS NOT NULL AND s.reps IS NOT NULL
+        ORDER BY s.weightKg * s.reps DESC, w.startedAt ASC
+        LIMIT 1
+        """
+    )
+    fun observeBestVolumeSet(exerciseId: Long): Flow<SetRecord?>
+
+    /** How many workouts the exercise was done in, and when last. Always returns one row. */
+    @Query(
+        """
+        SELECT COUNT(DISTINCT w.id) AS workoutCount, MAX(w.startedAt) AS lastPerformedAt
+        FROM workout_set s
+        JOIN workout_exercise we ON we.id = s.workoutExerciseId
+        JOIN workout w ON w.id = we.workoutId
+        WHERE we.exerciseId = :exerciseId AND s.isDone = 1 AND w.endedAt IS NOT NULL
+        """
+    )
+    fun observeExerciseStats(exerciseId: Long): Flow<ExerciseStats>
 
     /** Removes one exercise from a workout; its sets go with it (cascade). Returns rows deleted. */
     @Query("DELETE FROM workout_exercise WHERE id = :id")

@@ -459,5 +459,69 @@ class WorkoutDaoTest {
         assertEquals(0, workoutDao.observeHistorySummaries().first().size)
     }
 
+    @Test
+    fun personalBests_pickTheRightSets() = runBlocking {
+        val squat = newExercise("Squat")
+        newWorkout(1_000L, squat, listOf(100.0 to 5, 80.0 to 12))   // 1RM 116.7, volume 960
+        newWorkout(2_000L, squat, listOf(110.0 to 1, 60.0 to 15))   // heaviest 110, 1RM 110, volume 900
+
+        val heaviest = workoutDao.observeHeaviestSet(squat).first()!!
+        assertEquals(110.0, heaviest.weightKg!!, 0.0001)
+
+        val bestOneRm = workoutDao.observeBestOneRepMaxSet(squat).first()!!
+        assertEquals(100.0, bestOneRm.weightKg!!, 0.0001) // 100 x 5 beats 110 x 1 on estimate
+        assertEquals(5, bestOneRm.reps)
+
+        assertEquals(15, workoutDao.observeMostRepsSet(squat).first()!!.reps)
+
+        val bestVolume = workoutDao.observeBestVolumeSet(squat).first()!!
+        assertEquals(80.0, bestVolume.weightKg!!, 0.0001)
+        assertEquals(12, bestVolume.reps)
+
+        val stats = workoutDao.observeExerciseStats(squat).first()
+        assertEquals(2, stats.workoutCount)
+        assertEquals(2_000L, stats.lastPerformedAt)
+    }
+
+    @Test
+    fun personalBests_ignoreUntickedAndUnfinished() = runBlocking {
+        val bench = newExercise("Bench")
+        newWorkout(1_000L, bench, listOf(60.0 to 8)) // the only real record
+
+        // Finished workout, but the heavy set wasn't ticked.
+        val w2 = workoutDao.insertWorkout(WorkoutEntity(title = "a", startedAt = 2_000L, endedAt = 3_000L))
+        val we2 = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = w2, exerciseId = bench, position = 0))
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = we2, setIndex = 0, weightKg = 200.0, reps = 1))
+
+        // Ticked, but the workout is still in progress.
+        val w3 = workoutDao.insertWorkout(WorkoutEntity(title = "b", startedAt = 4_000L))
+        val we3 = workoutDao.insertWorkoutExercise(WorkoutExerciseEntity(workoutId = w3, exerciseId = bench, position = 0))
+        workoutDao.insertSet(WorkoutSetEntity(workoutExerciseId = we3, setIndex = 0, weightKg = 150.0, reps = 1, isDone = true))
+
+        assertEquals(60.0, workoutDao.observeHeaviestSet(bench).first()!!.weightKg!!, 0.0001)
+        assertEquals(1, workoutDao.observeExerciseStats(bench).first().workoutCount)
+    }
+
+    @Test
+    fun personalBests_areEmptyWithNoHistory() = runBlocking {
+        val curl = newExercise("Curl")
+
+        assertNull(workoutDao.observeHeaviestSet(curl).first())
+        val stats = workoutDao.observeExerciseStats(curl).first()
+        assertEquals(0, stats.workoutCount)
+        assertNull(stats.lastPerformedAt)
+    }
+
+    @Test
+    fun deleteExercisesInWorkout_removesEverythingInIt() = runBlocking {
+        val row = newExercise("Row")
+        val workoutId = newWorkout(5_000L, row, listOf(50.0 to 10, 50.0 to 10))
+
+        assertEquals(1, workoutDao.deleteExercisesInWorkout(workoutId))
+
+        assertEquals(1, countRows("workout")) // the workout itself stays
+        assertEquals(0, countRows("workout_exercise"))
+        assertEquals(0, countRows("workout_set"))
+    }
 
 }

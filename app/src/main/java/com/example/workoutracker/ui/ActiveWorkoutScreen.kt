@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -99,6 +100,7 @@ fun ActiveWorkoutScreen(
                 deleteSet = viewModel::deleteSet,
                 finish = { title, notes -> viewModel.finish(title, notes, onFinished) },
                 saveEdits = { title, notes, startedAt -> viewModel.saveEdits(title, notes, startedAt, onSaved) },
+                discardEdits = { viewModel.discardEdits(onSaved) },
                 discard = { viewModel.discard(onDiscarded) }
             ),
             modifier = modifier
@@ -117,6 +119,7 @@ private class WorkoutActions(
     val deleteSet: (setId: Long) -> Unit,
     val finish: (title: String, notes: String) -> Unit,
     val saveEdits: (title: String, notes: String, startedAt: Long) -> Unit,
+    val discardEdits: () -> Unit,
     val discard: () -> Unit
 )
 
@@ -145,6 +148,7 @@ private fun ActiveWorkoutContent(
     // Edit mode only: a new start time chosen with the picker, saved along with the title.
     var editedStartedAt by rememberSaveable { mutableLongStateOf(workout.startedAt) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    var confirmDiscardEdits by rememberSaveable { mutableStateOf(false) }
     fun trySave() {
         // Same rule as finishing: at least one ticked set, otherwise show the warning.
         if (summarizeForFinish(exercises).hasNothingDone) {
@@ -161,6 +165,13 @@ private fun ActiveWorkoutContent(
         topBar = {
             TopAppBar(
                 title = { Text(if (isEditing) "Edit workout" else "Active workout") },
+                navigationIcon = {
+                    if (isEditing) {
+                        IconButton(onClick = { confirmDiscardEdits = true }) {
+                            Icon(Icons.Default.Close, contentDescription = "Discard changes")
+                        }
+                    }
+                },
                 actions = {
                     Button(
                         onClick = {
@@ -325,6 +336,20 @@ private fun ActiveWorkoutContent(
                 }
             )
         }
+    }
+
+    if (confirmDiscardEdits) {
+        AlertDialog(
+            onDismissRequest = { confirmDiscardEdits = false },
+            title = { Text("Discard changes?") },
+            text = { Text("The workout goes back to exactly how it was when you opened the editor.") },
+            confirmButton = {
+                TextButton(onClick = { confirmDiscardEdits = false; actions.discardEdits() }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDiscardEdits = false }) { Text("Keep editing") }
+            }
+        )
     }
 
     if (showDatePicker) {

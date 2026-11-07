@@ -43,6 +43,7 @@ import com.example.workoutracker.data.MuscleGroup
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExercisesScreen(
+    onOpenExercise: (Long) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: ExerciseViewModel = viewModel()
 ) {
@@ -89,7 +90,7 @@ fun ExercisesScreen(
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(exercises, key = { it.id }) { exercise ->
-                        ExerciseRow(exercise)
+                        ExerciseRow(exercise, onClick = { onOpenExercise(exercise.id) })
                         HorizontalDivider()
                     }
                 }
@@ -110,9 +111,10 @@ fun ExercisesScreen(
 }
 
 @Composable
-private fun ExerciseRow(exercise: ExerciseEntity) {
+private fun ExerciseRow(exercise: ExerciseEntity, onClick: () -> Unit) {
     val details = listOfNotNull(exercise.muscleGroup, exercise.equipment).joinToString(" · ")
     ListItem(
+        modifier = Modifier.clickable(onClick = onClick),
         headlineContent = { Text(exercise.name) },
         supportingContent = if (details.isNotEmpty()) {
             { Text(details) }

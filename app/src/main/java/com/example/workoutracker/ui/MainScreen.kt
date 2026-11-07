@@ -34,6 +34,9 @@ private const val WORKOUT_ROUTE = "workout/{workoutId}"
 private fun workoutRoute(id: Long) = "workout/$id"
 
 private const val DETAIL_ROUTE = "history/{workoutId}"
+
+private const val EXERCISE_DETAIL_ROUTE = "exercises/{exerciseId}"
+private fun exerciseDetailRoute(id: Long) = "exercises/$id"
 private fun detailRoute(id: Long) = "history/$id"
 
 private const val ADD_EXERCISE_ROUTE = "workout/{workoutId}/add-exercise"
@@ -121,7 +124,19 @@ fun MainScreen() {
                     onEdit = { id -> navController.navigate(workoutRoute(id)) { launchSingleTop = true } }
                 )
             }
-            composable(Tab.Exercises.route) { ExercisesScreen() }
+            composable(Tab.Exercises.route) {
+                ExercisesScreen(
+                    onOpenExercise = { id ->
+                        navController.navigate(exerciseDetailRoute(id)) { launchSingleTop = true }
+                    }
+                )
+            }
+            composable(
+                route = EXERCISE_DETAIL_ROUTE,
+                arguments = listOf(navArgument("exerciseId") { type = NavType.LongType })
+            ) {
+                ExerciseDetailScreen(onBack = { navController.popBackStack() })
+            }
             composable(
                 route = WORKOUT_ROUTE,
                 arguments = listOf(navArgument("workoutId") { type = NavType.LongType })

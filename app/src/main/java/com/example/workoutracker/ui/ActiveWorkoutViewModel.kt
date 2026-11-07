@@ -10,11 +10,13 @@ import androidx.room.withTransaction
 import com.example.workoutracker.data.AppDatabase
 import com.example.workoutracker.data.WorkoutEntity
 import com.example.workoutracker.data.WorkoutExerciseWithSets
+import com.example.workoutracker.data.WorkoutWithDetails
 import com.example.workoutracker.data.WorkoutSetEntity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -159,6 +161,46 @@ class ActiveWorkoutViewModel(
     }
 
     private var saving = false
+
+    /**
+     * A copy of a finished workout exactly as it was when the editor opened, so "Discard changes"
+     * can put it back. Kept in memory only: if Android kills the app mid-edit, the copy is lost
+     * and the next one is taken from whatever was saved by then.
+     */
+    private var snapshot: WorkoutWithDetails? = null
+
+    init {
+        viewModelScope.launch {
+            val original = dao.observeDetails(workoutId).first()
+            // Only finished workouts are "edited"; a live workout has nothing to go back to.
+            if (original?.workout?.endedAt != null) snapshot = original
+        }
+    }
+
+    /** Puts the workout back to how it was when the editor opened, then calls [onDone]. */
+    fun discardEdits(onDone: () -> Unit) {
+        val original = snapshot
+        if (original == null) {
+            showError("Couldn't undo: the original wasn't loaded")
+            return
+        }
+        if (saving) return
+        saving = true
+        viewModelScope.launch {
+            db.withTransaction {
+                // Wipe the edited version (sets go too, by cascade), then re-insert the copy.
+                // The rows keep their original ids, so nothing else that points at them breaks.
+                dao.deleteExercisesInWorkout(workoutId)
+                original.exercises.forEach { item ->
+                    dao.insertWorkoutExercise(item.workoutExercise)
+                    dao.insertSets(item.sets)
+                }
+                dao.updateWorkout(original.workout)
+            }
+            Log.d(TAG, "discardEdits: workout $workoutId restored")
+            onDone()
+        }
+    }
 
     /**
      * Saves changes to an already-finished workout (edit mode). Unlike [finish], it doesn't stamp
