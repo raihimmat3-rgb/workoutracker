@@ -102,6 +102,10 @@ fun MainScreen() {
                 HomeScreen(
                     onOpenWorkout = { id ->
                         navController.navigate(workoutRoute(id)) { launchSingleTop = true }
+                    },
+                    // The "Last workout" card opens the same detail screen as History does.
+                    onOpenFinishedWorkout = { id ->
+                        navController.navigate(detailRoute(id)) { launchSingleTop = true }
                     }
                 )
             }
