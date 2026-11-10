@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -23,6 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -69,6 +74,7 @@ fun ExerciseDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 ExerciseInfo(current)
+                ProgressCard(current)
                 PersonalBestsCard(current.bests)
                 current.exercise.instructions?.let { HowToCard(it) }
             }
@@ -91,6 +97,63 @@ private fun ExerciseInfo(state: ExerciseDetailState) {
             else "Done in ${countLabel(stats.workoutCount, "workout")} · last on ${formatWorkoutDate(last)}",
             style = MaterialTheme.typography.bodyMedium
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProgressCard(state: ExerciseDetailState) {
+    // Weighted exercises open on estimated 1RM; bodyweight ones (no weights at all) on reps.
+    val defaultMetric =
+        if (state.sessions.any { it.heaviestKg != null }) ChartMetric.OneRepMax else ChartMetric.Reps
+    var metric by rememberSaveable { mutableStateOf(defaultMetric) }
+    var range by rememberSaveable { mutableStateOf(ChartRange.All) }
+
+    val points = filterByRange(chartPoints(state.sessions, metric), range, System.currentTimeMillis())
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Progress", style = MaterialTheme.typography.titleMedium)
+
+            // Scrolls sideways if the chips don't fit on a narrow phone.
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ChartMetric.entries.forEach { m ->
+                    FilterChip(selected = metric == m, onClick = { metric = m }, label = { Text(m.label) })
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChartRange.entries.forEach { r ->
+                    FilterChip(selected = range == r, onClick = { range = r }, label = { Text(r.label) })
+                }
+            }
+
+            if (points.isEmpty()) {
+                Text(
+                    if (state.sessions.isEmpty()) "Finish a workout with a ticked set of this exercise to start your chart."
+                    else "Nothing to show for ${metric.label.lowercase()} in this time range.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(vertical = 16.dp)
+                )
+            } else {
+                LineChart(
+                    points = points,
+                    formatValue = { metric.format(it) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (points.size == 1) {
+                    Text(
+                        "One workout so far. The line appears from your second.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
     }
 }
 

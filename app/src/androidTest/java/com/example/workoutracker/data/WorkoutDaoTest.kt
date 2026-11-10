@@ -524,4 +524,21 @@ class WorkoutDaoTest {
         assertEquals(0, countRows("workout_set"))
     }
 
+    @Test
+    fun exerciseSessions_onePerWorkoutOldestFirst() = runBlocking {
+        val squat = newExercise("Squat")
+        newWorkout(2_000L, squat, listOf(110.0 to 1, 60.0 to 15))
+        newWorkout(1_000L, squat, listOf(100.0 to 5, 80.0 to 12))
+
+        val sessions = workoutDao.observeExerciseSessions(squat).first()
+
+        assertEquals(listOf(1_000L, 2_000L), sessions.map { it.startedAt })
+        val first = sessions[0]
+        assertEquals(100.0, first.heaviestKg!!, 0.0001)
+        assertEquals(116.6667, first.bestOneRepMaxKg!!, 0.001) // 100 x 5 beats 80 x 12
+        assertEquals(1460.0, first.volumeKg, 0.0001)           // 500 + 960
+        assertEquals(12, first.mostReps)
+        assertEquals(110.0, sessions[1].bestOneRepMaxKg!!, 0.0001) // a single rep = its weight
+    }
+
 }

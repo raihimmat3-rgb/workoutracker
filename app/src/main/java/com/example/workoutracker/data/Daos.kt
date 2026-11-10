@@ -121,6 +121,30 @@ interface WorkoutDao {
     )
     fun observeBestVolumeSet(exerciseId: Long): Flow<SetRecord?>
 
+    /**
+     * One row per finished workout that has a ticked set of this exercise, oldest first:
+     * the numbers the progress chart plots. The one-rep-max CASE matches estimateOneRepMax().
+     * MAX and SUM skip NULLs, so bodyweight sets just leave the weight columns NULL.
+     */
+    @Query(
+        """
+        SELECT w.id AS workoutId, w.startedAt,
+            MAX(s.weightKg) AS heaviestKg,
+            MAX(CASE WHEN s.reps IS NULL OR s.reps <= 0 THEN NULL
+                     WHEN s.reps = 1 THEN s.weightKg
+                     ELSE s.weightKg * (1 + s.reps / 30.0) END) AS bestOneRepMaxKg,
+            COALESCE(SUM(s.weightKg * s.reps), 0) AS volumeKg,
+            MAX(s.reps) AS mostReps
+        FROM workout_set s
+        JOIN workout_exercise we ON we.id = s.workoutExerciseId
+        JOIN workout w ON w.id = we.workoutId
+        WHERE we.exerciseId = :exerciseId AND s.isDone = 1 AND w.endedAt IS NOT NULL
+        GROUP BY w.id
+        ORDER BY w.startedAt
+        """
+    )
+    fun observeExerciseSessions(exerciseId: Long): Flow<List<ExerciseSession>>
+
     /** How many workouts the exercise was done in, and when last. Always returns one row. */
     @Query(
         """

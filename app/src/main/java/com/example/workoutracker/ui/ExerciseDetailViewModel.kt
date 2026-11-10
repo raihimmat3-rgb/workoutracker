@@ -6,6 +6,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.example.workoutracker.data.AppDatabase
 import com.example.workoutracker.data.ExerciseEntity
+import com.example.workoutracker.data.ExerciseSession
 import com.example.workoutracker.data.ExerciseStats
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -16,7 +17,9 @@ import kotlinx.coroutines.flow.stateIn
 data class ExerciseDetailState(
     val exercise: ExerciseEntity,
     val bests: PersonalBests,
-    val stats: ExerciseStats
+    val stats: ExerciseStats,
+    /** One entry per workout it was done in, oldest first, for the progress chart. */
+    val sessions: List<ExerciseSession>
 )
 
 class ExerciseDetailViewModel(
@@ -44,8 +47,9 @@ class ExerciseDetailViewModel(
         combine(
             db.exerciseDao().observeById(exerciseId),
             bests,
-            workoutDao.observeExerciseStats(exerciseId)
-        ) { exercise, bests, stats ->
-            exercise?.let { ExerciseDetailState(it, bests, stats) }
+            workoutDao.observeExerciseStats(exerciseId),
+            workoutDao.observeExerciseSessions(exerciseId)
+        ) { exercise, bests, stats, sessions ->
+            exercise?.let { ExerciseDetailState(it, bests, stats, sessions) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 }
