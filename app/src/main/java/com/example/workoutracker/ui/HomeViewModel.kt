@@ -3,6 +3,9 @@ package com.example.workoutracker.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
+import com.example.workoutracker.data.TemplateWithExercises
+import com.example.workoutracker.data.WorkoutExerciseEntity
 import com.example.workoutracker.data.AppDatabase
 import com.example.workoutracker.data.WorkoutEntity
 import com.example.workoutracker.data.WorkoutSummary
@@ -18,7 +21,9 @@ private const val WEEKS_SHOWN = 8
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val dao = AppDatabase.get(application).workoutDao()
+    private val db = AppDatabase.get(application)
+    private val dao = db.workoutDao()
+    private val templateDao = db.templateDao()
 
     /** The workout in progress, or null. */
     val activeWorkout: StateFlow<WorkoutEntity?> =
@@ -37,6 +42,51 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     val weeks: StateFlow<List<WeekTotals>> =
         history.map { weeklyTotals(it, ZoneId.systemDefault(), System.currentTimeMillis(), WEEKS_SHOWN) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Saved routines, A to Z, each with its exercises in order. */
+    val templates: StateFlow<List<TemplateWithExercises>> =
+        templateDao.observeAll()
+            .map { list ->
+                list.map { t -> t.copy(exercises = t.exercises.sortedBy { it.templateExercise.position }) }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * Starts a workout from a routine: its exercises in order, each with the planned number of
+     * sets pre-filled from last time (not ticked). If a workout is already in progress, it
+     * opens that one instead, like the Start button.
+     */
+    fun startFromTemplate(templateId: Long, onReady: (Long) -> Unit) {
+        viewModelScope.launch {
+            dao.getActive()?.let { onReady(it.id); return@launch }
+            val template = templateDao.getTemplate(templateId) ?: return@launch
+            val workoutId = db.withTransaction {
+                val id = dao.insertWorkout(
+                    WorkoutEntity(title = template.template.name, startedAt = System.currentTimeMillis())
+                )
+                if (id == -1L) return@withTransaction -1L
+                template.exercises
+                    .sortedBy { it.templateExercise.position }
+                    .forEachIndexed { position, item ->
+                        val weId = dao.insertWorkoutExercise(
+                            WorkoutExerciseEntity(
+                                workoutId = id,
+                                exerciseId = item.exercise.id,
+                                position = position
+                            )
+                        )
+                        val previous = dao.getPreviousSets(item.exercise.id, id)
+                        dao.insertSets(plannedSets(item.templateExercise.setCount, previous, weId))
+                    }
+                id
+            }
+            if (workoutId != -1L) onReady(workoutId)
+        }
+    }
+
+    fun deleteTemplate(templateId: Long) {
+        viewModelScope.launch { templateDao.deleteTemplate(templateId) }
+    }
 
     /**
      * Starts a new workout and reports its id, unless one is already in progress,

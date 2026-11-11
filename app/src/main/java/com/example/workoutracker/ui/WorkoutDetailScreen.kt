@@ -25,6 +25,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +56,7 @@ fun WorkoutDetailScreen(
 ) {
     val details by viewModel.details.collectAsStateWithLifecycle()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var showSaveTemplate by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
@@ -95,10 +98,25 @@ fun WorkoutDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item { WorkoutHeader(current) }
+                item {
+                    OutlinedButton(onClick = { showSaveTemplate = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Save as routine")
+                    }
+                }
                 items(current.exercises, key = { it.workoutExercise.id }) { item ->
                     ExerciseSummaryCard(item)
                 }
             }
+        }
+    }
+
+    if (showSaveTemplate) {
+        details?.let { d ->
+            SaveTemplateDialog(
+                defaultName = d.workout.title,
+                onSave = { name -> showSaveTemplate = false; viewModel.saveAsTemplate(name) },
+                onDismiss = { showSaveTemplate = false }
+            )
         }
     }
 
@@ -184,4 +202,37 @@ private fun SetSummaryRow(number: Int, set: WorkoutSetEntity) {
             Text("not done", color = colour, style = MaterialTheme.typography.labelSmall)
         }
     }
+}
+
+@Composable
+private fun SaveTemplateDialog(defaultName: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    var name by rememberSaveable { mutableStateOf(defaultName) }
+    // Same rules as an exercise name: not blank, at most 60 characters.
+    val error = validateExerciseName(name)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Save as routine") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Saves these exercises, in this order, with the same number of sets. " +
+                            "Weights and reps aren't saved: starting the routine fills them in from last time.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Routine name") },
+                    singleLine = true,
+                    isError = error != null && name.isNotEmpty(),
+                    supportingText = error?.takeIf { name.isNotEmpty() }?.let { { Text(it) } },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(name) }, enabled = error == null) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }

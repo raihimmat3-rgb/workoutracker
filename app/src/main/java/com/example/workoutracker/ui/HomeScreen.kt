@@ -10,7 +10,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -23,10 +31,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.workoutracker.data.TemplateWithExercises
 import com.example.workoutracker.data.WorkoutEntity
 import com.example.workoutracker.data.WorkoutSummary
 
@@ -41,6 +52,7 @@ fun HomeScreen(
     val active by viewModel.activeWorkout.collectAsStateWithLifecycle()
     val lastWorkout by viewModel.lastWorkout.collectAsStateWithLifecycle()
     val weeks by viewModel.weeks.collectAsStateWithLifecycle()
+    val templates by viewModel.templates.collectAsStateWithLifecycle()
     val current = active
 
     Scaffold(
@@ -65,6 +77,14 @@ fun HomeScreen(
                         .height(64.dp)
                 ) {
                     Text("Start a workout", style = MaterialTheme.typography.titleMedium)
+                }
+                // Routines only make sense when nothing is in progress.
+                if (templates.isNotEmpty()) {
+                    RoutinesCard(
+                        templates = templates,
+                        onStart = { id -> viewModel.startFromTemplate(id, onOpenWorkout) },
+                        onDelete = viewModel::deleteTemplate
+                    )
                 }
             }
 
@@ -162,5 +182,54 @@ private fun LastWorkoutCard(summary: WorkoutSummary, onClick: () -> Unit) {
             )
             Text("Tap to see more", style = MaterialTheme.typography.labelSmall)
         }
+    }
+}
+
+@Composable
+private fun RoutinesCard(
+    templates: List<TemplateWithExercises>,
+    onStart: (Long) -> Unit,
+    onDelete: (Long) -> Unit
+) {
+    var pendingDelete by rememberSaveable { mutableStateOf<Long?>(null) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Routines", style = MaterialTheme.typography.labelLarge)
+            templates.forEachIndexed { index, t ->
+                if (index > 0) HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Row(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(t.template.name, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            t.exercises.joinToString(", ") { it.exercise.name },
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(onClick = { pendingDelete = t.template.id }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete ${t.template.name}")
+                    }
+                    FilledTonalButton(onClick = { onStart(t.template.id) }) { Text("Start") }
+                }
+            }
+        }
+    }
+
+    pendingDelete?.let { id ->
+        val name = templates.firstOrNull { it.template.id == id }?.template?.name ?: "this routine"
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete \"$name\"?") },
+            text = { Text("Only the routine is deleted. Workouts you did with it stay in your history.") },
+            confirmButton = {
+                TextButton(onClick = { pendingDelete = null; onDelete(id) }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Keep") } }
+        )
     }
 }
