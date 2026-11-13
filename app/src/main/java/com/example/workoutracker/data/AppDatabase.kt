@@ -17,11 +17,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TemplateEntity::class,
         TemplateExerciseEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,  // writes a schema JSON per version into app/schemas; commit them
     // Version 2 -> 3 only ADDS two tables, so Room can write that migration itself by
     // comparing schemas/2.json with the new schema. (1 -> 2 changed existing data, so it's manual.)
-    autoMigrations = [AutoMigration(from = 2, to = 3)]
+    // 3 -> 4 only adds nullable columns and an index to `workout`, so it's automatic too.
+    autoMigrations = [AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)]
 )
 abstract class AppDatabase : RoomDatabase() {
 

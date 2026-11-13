@@ -27,7 +27,12 @@ data class ExerciseEntity(
  */
 @Entity(
     tableName = "workout",
-    indices = [Index(value = ["startedAt"], unique = true)]
+    indices = [
+        Index(value = ["startedAt"], unique = true),
+        // Each Hevy workout can only be imported once. NULL for workouts made in this app
+        // (SQLite allows many NULLs in a unique index).
+        Index(value = ["hevyKey"], unique = true)
+    ]
 )
 data class WorkoutEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -35,7 +40,14 @@ data class WorkoutEntity(
     val startedAt: Long,
     val endedAt: Long? = null,      // null while the workout is still in progress
     val notes: String? = null,
-    val source: String = "manual"   // "manual" or "hevy"
+    val source: String = "manual",  // "manual", "sample" or "hevy"
+    // ---- Hevy sync (database version 4). All null for workouts made in this app. ----
+    /** Its start time in Hevy: how sync finds it in the file, even if you change the date here. */
+    val hevyKey: Long? = null,
+    /** Fingerprint of Hevy's version at the last sync. */
+    val hevyFingerprint: String? = null,
+    /** Fingerprint of this app's version at the last sync, so later edits here can be spotted. */
+    val syncedFingerprint: String? = null
 )
 
 /** An exercise performed inside one workout (the join between workout and exercise). */
