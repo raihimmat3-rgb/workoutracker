@@ -235,6 +235,30 @@ interface WorkoutDao {
     @Query("DELETE FROM workout WHERE id = :id")
     suspend fun deleteWorkout(id: Long): Int
 
+    // ---- Hevy sync (Day 24) ----
+
+    /** Every workout that came from Hevy, with its exercises and sets, to fingerprint. */
+    @Transaction
+    @Query("SELECT * FROM workout WHERE hevyKey IS NOT NULL")
+    suspend fun getImportedWithDetails(): List<WorkoutWithDetails>
+
+    /** Start times of ALL workouts, so a new Hevy workout can't clash with one made here. */
+    @Query("SELECT startedAt FROM workout")
+    suspend fun getAllStartTimes(): List<Long>
+
+    @Query("UPDATE workout SET hevyFingerprint = :hevy, syncedFingerprint = :synced WHERE id = :id")
+    suspend fun updateSyncFingerprints(id: Long, hevy: String?, synced: String?): Int
+
+    /** "Keep mine" for a workout deleted in Hevy: it becomes a normal workout sync never touches. */
+    @Query(
+        """
+        UPDATE workout
+        SET source = 'manual', hevyKey = NULL, hevyFingerprint = NULL, syncedFingerprint = NULL
+        WHERE id = :id
+        """
+    )
+    suspend fun detachFromHevy(id: Long): Int
+
     @Query("SELECT EXISTS(SELECT 1 FROM workout WHERE startedAt = :startedAt)")
     suspend fun existsByStartedAt(startedAt: Long): Boolean
 
