@@ -10,7 +10,9 @@ enum class Resolution { KeepMine, UseHevy }
 /** A plan plus what's needed to apply it ("keep mine" saves your version's fingerprint). */
 data class PreparedSync(
     val plan: SyncPlan,
-    val currentFingerprints: Map<Long, String>
+    val currentFingerprints: Map<Long, String>,
+    /** The app's Hevy workouts by id, so the preview can name the ones it will delete. */
+    val imported: Map<Long, LocalSyncState> = emptyMap()
 )
 
 /** What applying did, for the summary screen. */
@@ -51,7 +53,7 @@ class HevySync(private val db: AppDatabase) {
             )
         }
         val plan = planSync(file, states, workoutDao.getAllStartTimes().toSet())
-        return PreparedSync(plan, current)
+        return PreparedSync(plan, current, states.associateBy { it.id })
     }
 
     suspend fun apply(prepared: PreparedSync, resolutions: Map<Long, Resolution>): SyncResult =

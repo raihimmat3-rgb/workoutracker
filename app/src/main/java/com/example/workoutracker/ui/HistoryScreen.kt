@@ -29,6 +29,7 @@ import com.example.workoutracker.data.WorkoutSummary
 @Composable
 fun HistoryScreen(
     onOpenWorkout: (Long) -> Unit,
+    onSyncHevy: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HistoryViewModel = viewModel()
 ) {
@@ -40,8 +41,9 @@ fun HistoryScreen(
             TopAppBar(
                 title = { Text("History") },
                 actions = {
-                    // TEMPORARY: remove once the Hevy import exists (Week 4).
-                    TextButton(onClick = viewModel::addSampleData) { Text("Add sample data") }
+                    TextButton(onClick = onSyncHevy) { Text("Sync Hevy") }
+                    // TEMPORARY: removed on Day 26 now that real data can come in.
+                    TextButton(onClick = viewModel::addSampleData) { Text("Sample") }
                 }
             )
         }

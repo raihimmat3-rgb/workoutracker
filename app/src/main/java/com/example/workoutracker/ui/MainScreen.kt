@@ -11,7 +11,9 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -35,6 +37,11 @@ private fun workoutRoute(id: Long) = "workout/$id"
 
 private const val DETAIL_ROUTE = "history/{workoutId}"
 
+// The file is optional: opened from the History button there's none yet;
+// shared from Hevy or a file manager, its address arrives here (encoded, as it contains / and :).
+private const val SYNC_ROUTE = "sync?uri={uri}"
+private fun syncRoute(uri: Uri? = null) = if (uri == null) "sync" else "sync?uri=${Uri.encode(uri.toString())}"
+
 private const val EXERCISE_DETAIL_ROUTE = "exercises/{exerciseId}"
 private fun exerciseDetailRoute(id: Long) = "exercises/$id"
 private fun detailRoute(id: Long) = "history/$id"
@@ -57,8 +64,13 @@ private fun NavHostController.navigateToTab(route: String) {
 
 /** The app's top-level shell: a bottom navigation bar and the screen for the selected tab. */
 @Composable
-fun MainScreen() {
+fun MainScreen(sharedFileUri: Uri? = null) {
     val navController = rememberNavController()
+
+    // Opened by sharing a file to the app: go straight to the sync screen with it.
+    LaunchedEffect(sharedFileUri) {
+        sharedFileUri?.let { navController.navigate(syncRoute(it)) { launchSingleTop = true } }
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
@@ -113,8 +125,19 @@ fun MainScreen() {
                 HistoryScreen(
                     onOpenWorkout = { id ->
                         navController.navigate(detailRoute(id)) { launchSingleTop = true }
-                    }
+                    },
+                    onSyncHevy = { navController.navigate(syncRoute()) { launchSingleTop = true } }
                 )
+            }
+            composable(
+                route = SYNC_ROUTE,
+                arguments = listOf(navArgument("uri") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                })
+            ) {
+                SyncScreen(onClose = { navController.popBackStack() })
             }
             composable(
                 route = DETAIL_ROUTE,
