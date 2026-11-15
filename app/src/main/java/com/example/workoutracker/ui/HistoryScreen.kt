@@ -42,8 +42,6 @@ fun HistoryScreen(
                 title = { Text("History") },
                 actions = {
                     TextButton(onClick = onSyncHevy) { Text("Sync Hevy") }
-                    // TEMPORARY: removed on Day 26 now that real data can come in.
-                    TextButton(onClick = viewModel::addSampleData) { Text("Sample") }
                 }
             )
         }

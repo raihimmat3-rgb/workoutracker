@@ -1,15 +1,17 @@
 package com.example.workoutracker.ui
 
 import android.app.Application
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.workoutracker.data.AppDatabase
 import com.example.workoutracker.data.ExerciseEntity
-import com.example.workoutracker.data.seedHevyExercises
+import com.example.workoutracker.hevy.guessMuscleGroup
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -63,8 +65,18 @@ class ExerciseViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    /** TEMPORARY: loads the exercises found in the Hevy export. Safe to tap more than once. */
-    fun loadHevyExercises() {
-        viewModelScope.launch { seedHevyExercises(dao) }
+    /** Guesses a muscle group for every exercise that has none. Reports how many it filled. */
+    fun fillMissingMuscleGroups() {
+        viewModelScope.launch {
+            val blank = dao.observeAll().first().filter { it.muscleGroup == null }
+            var filled = 0
+            blank.forEach { exercise ->
+                guessMuscleGroup(exercise.name)?.let { filled += dao.fillMuscleGroupIfMissing(exercise.id, it) }
+            }
+            val left = blank.size - filled
+            val message = if (blank.isEmpty()) "Every exercise already has a muscle group"
+            else "Filled in $filled. $left still blank: set those on each exercise's screen."
+            Toast.makeText(getApplication(), message, Toast.LENGTH_LONG).show()
+        }
     }
 }

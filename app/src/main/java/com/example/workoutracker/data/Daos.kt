@@ -24,6 +24,26 @@ interface ExerciseDao {
     @Query("SELECT * FROM exercise WHERE id = :id")
     fun observeById(id: Long): Flow<ExerciseEntity?>
 
+    /** Saves muscle group, equipment and instructions. (Names stay fixed: see ExerciseDetailScreen.) */
+    @Update
+    suspend fun update(exercise: ExerciseEntity): Int
+
+    /** Sets a muscle group only if there isn't one, so a choice you made is never overwritten. */
+    @Query("UPDATE exercise SET muscleGroup = :group WHERE id = :id AND muscleGroup IS NULL")
+    suspend fun fillMuscleGroupIfMissing(id: Long, group: String): Int
+
+    /** True if any workout or routine uses it, in which case it can't be deleted. */
+    @Query(
+        """
+        SELECT EXISTS(SELECT 1 FROM workout_exercise WHERE exerciseId = :id)
+            OR EXISTS(SELECT 1 FROM template_exercise WHERE exerciseId = :id)
+        """
+    )
+    fun observeIsUsed(id: Long): Flow<Boolean>
+
+    @Query("DELETE FROM exercise WHERE id = :id")
+    suspend fun delete(id: Long): Int
+
     @Query("SELECT * FROM exercise WHERE name LIKE '%' || :query || '%' ORDER BY name")
     fun search(query: String): Flow<List<ExerciseEntity>>
 }

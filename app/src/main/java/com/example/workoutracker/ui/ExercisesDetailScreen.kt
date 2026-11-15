@@ -12,6 +12,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -43,6 +48,8 @@ fun ExerciseDetailScreen(
     viewModel: ExerciseDetailViewModel = viewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var showEdit by rememberSaveable { mutableStateOf(false) }
+    var showDelete by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         modifier = modifier,
@@ -52,6 +59,16 @@ fun ExerciseDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (state != null) {
+                        IconButton(onClick = { showEdit = true }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Edit exercise")
+                        }
+                        IconButton(onClick = { showDelete = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete exercise")
+                        }
                     }
                 }
             )
@@ -78,6 +95,38 @@ fun ExerciseDetailScreen(
                 PersonalBestsCard(current.bests)
                 current.exercise.instructions?.let { HowToCard(it) }
             }
+        }
+    }
+
+    val current = state
+    if (showEdit && current != null) {
+        EditExerciseDialog(
+            state = current,
+            onSave = { group, equipment, instructions ->
+                viewModel.saveDetails(group, equipment, instructions)
+                showEdit = false
+            },
+            onDismiss = { showEdit = false }
+        )
+    }
+    if (showDelete && current != null) {
+        if (current.isUsed) {
+            AlertDialog(
+                onDismissRequest = { showDelete = false },
+                title = { Text("Can't delete this exercise") },
+                text = { Text("It's used in your workout history or a routine. Deleting it would break those.") },
+                confirmButton = { TextButton(onClick = { showDelete = false }) { Text("OK") } }
+            )
+        } else {
+            AlertDialog(
+                onDismissRequest = { showDelete = false },
+                title = { Text("Delete \"${current.exercise.name}\"?") },
+                text = { Text("It isn't used anywhere, so nothing else changes.") },
+                confirmButton = {
+                    TextButton(onClick = { showDelete = false; viewModel.delete(onBack) }) { Text("Delete") }
+                },
+                dismissButton = { TextButton(onClick = { showDelete = false }) { Text("Keep") } }
+            )
         }
     }
 }
@@ -226,4 +275,51 @@ private fun HowToCard(instructions: String) {
             )
         }
     }
+}
+
+@Composable
+private fun EditExerciseDialog(
+    state: ExerciseDetailState,
+    onSave: (muscleGroup: String, equipment: String, instructions: String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val exercise = state.exercise
+    var group by rememberSaveable { mutableStateOf(exercise.muscleGroup ?: "") }
+    var equipment by rememberSaveable { mutableStateOf(exercise.equipment ?: "") }
+    var instructions by rememberSaveable { mutableStateOf(exercise.instructions ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(exercise.name) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Hevy sync matches exercises by name, so renaming one would make every synced
+                // workout that uses it look edited. Names stay as they are.
+                Text(
+                    "The name can't be changed: Hevy sync uses it to match exercises.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                MuscleGroupDropdown(selected = group, onSelected = { group = it }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    value = equipment,
+                    onValueChange = { equipment = it },
+                    label = { Text("Equipment (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = instructions,
+                    onValueChange = { instructions = it },
+                    label = { Text("How to perform (optional)") },
+                    minLines = 2,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(group, equipment, instructions) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }

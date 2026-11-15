@@ -71,8 +71,16 @@ class HevySync(private val db: AppDatabase) {
             suspend fun exerciseIdFor(name: String): Long =
                 exerciseIds.getOrPut(name.trim().lowercase()) {
                     val trimmed = name.trim()
-                    val inserted = exerciseDao.insert(ExerciseEntity(name = trimmed))
-                    if (inserted != -1L) inserted else exerciseDao.findByName(trimmed)!!.id
+                    val group = guessMuscleGroup(trimmed)
+                    val inserted = exerciseDao.insert(ExerciseEntity(name = trimmed, muscleGroup = group))
+                    if (inserted != -1L) {
+                        inserted
+                    } else {
+                        // Already in the library: reuse it, and fill its muscle group only if blank.
+                        val existing = exerciseDao.findByName(trimmed)!!
+                        if (group != null) exerciseDao.fillMuscleGroupIfMissing(existing.id, group)
+                        existing.id
+                    }
                 }
 
             /** Writes Hevy's exercises and sets into a workout that has none. */

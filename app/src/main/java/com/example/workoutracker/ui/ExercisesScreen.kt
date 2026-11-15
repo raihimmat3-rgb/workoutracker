@@ -57,8 +57,8 @@ fun ExercisesScreen(
             TopAppBar(
                 title = { Text("Exercises") },
                 actions = {
-                    // TEMPORARY: remove once the Hevy import exists (Week 4).
-                    TextButton(onClick = viewModel::loadHevyExercises) { Text("Load Hevy exercises") }
+                    // Guesses a group for every exercise that has none (never overwrites one you set).
+                    TextButton(onClick = viewModel::fillMissingMuscleGroups) { Text("Fill groups") }
                 }
             )
         },
@@ -130,7 +130,7 @@ private fun ExerciseRow(exercise: ExerciseEntity, onClick: () -> Unit) {
  * whole field tappable (a read-only text field swallows taps on its own).
  */
 @Composable
-private fun MuscleGroupDropdown(
+internal fun MuscleGroupDropdown(
     selected: String,
     onSelected: (String) -> Unit,
     modifier: Modifier = Modifier
