@@ -1,6 +1,7 @@
 package com.example.coach.gemini;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -8,13 +9,14 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Calls Gemini's REST API directly with Spring's RestClient (no Google SDK needed):
  * POST {baseUrl}/v1beta/models/{model}:generateContent, with the key in the x-goog-api-key header.
  */
 @Component
-public class GeminiClient {
+public class GeminiClient implements JsonGenerator {
 
     private final RestClient restClient;
     private final GeminiProperties properties;
@@ -24,12 +26,29 @@ public class GeminiClient {
         this.restClient = builder.baseUrl(properties.baseUrl()).build();
     }
 
-    /** Sends one prompt and returns Gemini's text answer. */
+    /** Sends one prompt and returns Gemini's plain-text answer. */
     public String generate(String prompt) {
+        return send(new GenerateRequest(null, List.of(new Content(List.of(new Part(prompt)))), null));
+    }
+
+    /**
+     * Structured output: Gemini must answer with JSON matching [schema], so the reply can be
+     * read straight into Java records instead of picking facts out of free text.
+     * [systemInstruction] sets the model's role and rules, separately from the data.
+     */
+    @Override
+    public String generateJson(String systemInstruction, String prompt, Map<String, Object> schema) {
+        return send(new GenerateRequest(
+                new Content(List.of(new Part(systemInstruction))),
+                List.of(new Content(List.of(new Part(prompt)))),
+                new GenerationConfig("application/json", schema)
+        ));
+    }
+
+    private String send(GenerateRequest request) {
         if (properties.apiKey() == null || properties.apiKey().isBlank()) {
             throw new GeminiException("GEMINI_API_KEY is not set on the server", 0);
         }
-        var request = new GenerateRequest(List.of(new Content(List.of(new Part(prompt)))));
         try {
             GenerateResponse response = restClient.post()
                     .uri("/v1beta/models/{model}:generateContent", properties.model())
@@ -40,7 +59,7 @@ public class GeminiClient {
                     .body(GenerateResponse.class);
             return extractText(response);
         } catch (RestClientResponseException e) {
-            // e.g. 400 = bad request or unknown model, 403 = bad key, 429 = free quota used up.
+            // e.g. 400 = bad request, 403 = bad key, 404 = unknown model, 429 = free quota used up.
             int status = e.getStatusCode().value();
             throw new GeminiException("Gemini returned HTTP " + status, status, e);
         } catch (RestClientException e) {
@@ -67,7 +86,11 @@ public class GeminiClient {
 
     // ---- The JSON shapes Gemini expects and returns (only the fields we use) ----
 
-    record GenerateRequest(List<Content> contents) {}
+    /** Fields left null aren't sent at all, so a plain prompt has no generationConfig. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    record GenerateRequest(Content systemInstruction, List<Content> contents, GenerationConfig generationConfig) {}
+
+    record GenerationConfig(String responseMimeType, Map<String, Object> responseSchema) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Content(List<Part> parts) {}

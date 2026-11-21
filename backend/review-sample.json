@@ -1,0 +1,43 @@
+{
+  "workout": { "title": "Upper", "date": "2026-11-16", "durationMinutes": 72 },
+  "exercises": [
+    {
+      "name": "Bench Press (Barbell)",
+      "muscleGroup": "Chest",
+      "sets": [
+        { "weightKg": 100, "reps": 5, "type": "normal" },
+        { "weightKg": 100, "reps": 5, "type": "normal" },
+        { "weightKg": 100, "reps": 3, "type": "normal" }
+      ],
+      "previous": {
+        "daysAgo": 4,
+        "sets": [
+          { "weightKg": 97.5, "reps": 5, "type": "normal" },
+          { "weightKg": 97.5, "reps": 5, "type": "normal" },
+          { "weightKg": 97.5, "reps": 5, "type": "normal" }
+        ]
+      },
+      "changes": [
+        "Weight up from 97.5 kg to 100 kg on every set",
+        "Set 3: 3 reps today vs 5 last time"
+      ]
+    },
+    {
+      "name": "Bicep Curl (Cable)",
+      "muscleGroup": "Biceps",
+      "sets": [
+        { "weightKg": 20, "reps": 12, "type": "normal" },
+        { "weightKg": 20, "reps": 11, "type": "normal" }
+      ],
+      "previous": {
+        "daysAgo": 4,
+        "sets": [
+          { "weightKg": 20, "reps": 10, "type": "normal" },
+          { "weightKg": 20, "reps": 10, "type": "normal" }
+        ]
+      },
+      "changes": ["Set 1: 12 reps vs 10 last time", "Set 2: 11 reps vs 10 last time"]
+    }
+  ],
+  "context": { "daysSinceLastWorkout": 1, "workoutsThisWeek": 2 }
+}

@@ -1,9 +1,9 @@
 package com.example.coach;
 
-import com.example.coach.gemini.GeminiClient;
+import com.example.coach.review.CoachReview;
+import com.example.coach.review.CoachService;
+import com.example.coach.review.ReviewRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -16,28 +16,21 @@ import java.util.Map;
 @RequestMapping("/api")
 public class CoachController {
 
-    private final GeminiClient gemini;
+    private final CoachService coach;
 
-    public CoachController(GeminiClient gemini) {
-        this.gemini = gemini;
+    public CoachController(CoachService coach) {
+        this.coach = coach;
     }
 
-    /** "Is the server up?" Free: never calls Gemini. Render will also use this later. */
+    /** "Is the server up?" Free: never calls Gemini. */
     @GetMapping("/health")
     public Map<String, String> health() {
         return Map.of("status", "ok");
     }
 
-    /**
-     * TEMPORARY (Day 29): proves your key and model work. Replaced by the real coach endpoints.
-     * Each call uses one of your free daily Gemini requests.
-     */
-    @PostMapping("/ask")
-    public AskResponse ask(@Valid @RequestBody AskRequest request) {
-        return new AskResponse(gemini.generate(request.question()));
+    /** Reviews one finished workout. Uses one Gemini request. */
+    @PostMapping("/coach/review")
+    public CoachReview review(@Valid @RequestBody ReviewRequest request) {
+        return coach.review(request);
     }
-
-    public record AskRequest(@NotBlank @Size(max = 500) String question) {}
-
-    public record AskResponse(String answer) {}
 }
