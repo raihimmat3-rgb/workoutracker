@@ -1,104 +1,130 @@
-package com.example.coach.review;
+package com.example.coach;
 
 import com.example.coach.gemini.GeminiException;
-import com.example.coach.review.ReviewRequest.ExerciseData;
-import com.example.coach.review.ReviewRequest.SetData;
-import com.example.coach.review.ReviewRequest.WorkoutInfo;
+import com.example.coach.gemini.JsonGenerator;
+import com.example.coach.review.CoachService;
+import com.example.coach.security.AppKeyInterceptor;
+import com.example.coach.security.CoachProperties;
+import com.example.coach.security.DailyLimiter;
 import org.junit.jupiter.api.Test;
-import tools.jackson.databind.ObjectMapper;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
+import java.time.Clock;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** Uses a FAKE generator (a lambda), so these never call Gemini. */
-class CoachServiceTest {
+/**
+ * Sends real HTTP-style requests through the controller, the app-key check and the error handling,
+ * without starting a server or calling Gemini (MockMvc + a fake generator).
+ */
+class CoachEndpointTest {
 
-    private final ObjectMapper mapper = JsonMapper.builder().build();
+    private static final String KEY = "test-app-key";
 
-    private final ReviewRequest request = new ReviewRequest(
-            new WorkoutInfo("Upper", "2026-11-16", 72),
-            List.of(new ExerciseData(
-                    "Bench Press (Barbell)", "Chest",
-                    List.of(new SetData(100.0, 5, "normal"), new SetData(100.0, 3, "normal")),
-                    null,
-                    List.of("Set 2: 3 reps today vs 5 last time")
-            )),
-            null
-    );
+    private static final String VALID_BODY = """
+            {"workout":{"title":"Upper","date":"2026-11-16","durationMinutes":60},
+             "exercises":[{"name":"Bench Press (Barbell)","sets":[{"weightKg":100,"reps":5,"type":"normal"}]}]}
+            """;
 
-    @Test
-    void sendsTheRulesTheDataAndTheSchema_andReadsTheAnswer() {
-        AtomicReference<String> sentSystem = new AtomicReference<>();
-        AtomicReference<String> sentPrompt = new AtomicReference<>();
-        AtomicReference<Object> sentSchema = new AtomicReference<>();
-        CoachService service = new CoachService((system, prompt, schema) -> {
-            sentSystem.set(system);
-            sentPrompt.set(prompt);
-            sentSchema.set(schema);
-            return """
-                    {"headline":"Heavier bench, last set dipped",
-                     "summary":"You added 2.5 kg.",
-                     "exercises":[{"name":"Bench Press (Barbell)","trend":"up","note":"Weight went up."}],
-                     "tips":["Rest a little longer before the last set"]}
-                    """;
-        }, mapper);
+    private static final String GOOD_ANSWER = """
+            {"headline":"Solid session","summary":"Good work.",
+             "exercises":[{"name":"Bench Press (Barbell)","trend":"new","note":"First time logged."}],
+             "tips":["Add a rep next time"]}
+            """;
 
-        CoachReview review = service.review(request);
+    private MockMvc mvc(JsonGenerator generator, int dailyLimit, String serverKey) {
+        CoachProperties props = new CoachProperties(serverKey, dailyLimit);
+        CoachService service = new CoachService(generator, JsonMapper.builder().build(),
+                new DailyLimiter(props, Clock.systemUTC()));
+        return MockMvcBuilders.standaloneSetup(new CoachController(service))
+                .setControllerAdvice(new ApiErrors())
+                .addMappedInterceptors(new String[]{"/api/coach/**"}, new AppKeyInterceptor(props))
+                .build();
+    }
 
-        assertEquals("Heavier bench, last set dipped", review.headline());
-        assertEquals("up", review.exercises().get(0).trend());
-        assertTrue(sentSystem.get().contains("Use ONLY the numbers"));
-        assertTrue(sentPrompt.get().contains("Set 2: 3 reps today vs 5 last time"));
-        assertSame(ReviewPrompt.RESPONSE_SCHEMA, sentSchema.get());
+    private MockMvc mvc(JsonGenerator generator) {
+        return mvc(generator, 10, KEY);
     }
 
     @Test
-    void notesAboutExercisesThatWerentDone_areDropped() {
-        CoachService service = new CoachService((s, p, schema) -> """
-                {"headline":"h","summary":"s",
-                 "exercises":[{"name":"bench press (barbell)","trend":"down","note":"Real."},
-                              {"name":"Squat (Barbell)","trend":"up","note":"Made up!"}],
-                 "tips":[]}
-                """, mapper);
-
-        CoachReview review = service.review(request);
-
-        assertEquals(1, review.exercises().size()); // the squat note is gone
-        assertEquals("Real.", review.exercises().get(0).note());
+    void healthNeedsNoKey() throws Exception {
+        mvc((s, p, schema) -> GOOD_ANSWER).perform(get("/api/health"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"));
     }
 
     @Test
-    void tidiesUnknownTrendsBlankHeadlinesAndTooManyTips() {
-        CoachService service = new CoachService((s, p, schema) -> """
-                {"headline":"  ","summary":"s",
-                 "exercises":[{"name":"Bench Press (Barbell)","trend":"sideways","note":"n"}],
-                 "tips":["a","b","c","d"," "]}
-                """, mapper);
-
-        CoachReview review = service.review(request);
-
-        assertEquals("Workout reviewed", review.headline());
-        assertEquals("same", review.exercises().get(0).trend());
-        assertEquals(List.of("a", "b", "c"), review.tips());
+    void reviewWithTheRightKey_returnsTheReview() throws Exception {
+        mvc((s, p, schema) -> GOOD_ANSWER).perform(post("/api/coach/review")
+                        .header("X-App-Key", KEY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(VALID_BODY))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.headline").value("Solid session"))
+                .andExpect(jsonPath("$.exercises[0].trend").value("new"));
     }
 
     @Test
-    void missingListsBecomeEmptyNotNull() {
-        CoachService service = new CoachService((s, p, schema) -> "{\"headline\":\"h\",\"summary\":\"s\"}", mapper);
-        CoachReview review = service.review(request);
-        assertEquals(List.of(), review.exercises());
-        assertEquals(List.of(), review.tips());
+    void missingOrWrongKey_is401() throws Exception {
+        MockMvc mvc = mvc((s, p, schema) -> GOOD_ANSWER);
+        mvc.perform(post("/api/coach/review").contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.reason").value("unauthorized"));
+        mvc.perform(post("/api/coach/review").header("X-App-Key", "wrong")
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
-    void anAnswerThatIsntJson_isAClearError() {
-        CoachService service = new CoachService((s, p, schema) -> "Sorry, I can't help with that.", mapper);
-        assertThrows(GeminiException.class, () -> service.review(request));
+    void noKeyConfiguredOnTheServer_keepsTheCoachClosed() throws Exception {
+        mvc((s, p, schema) -> GOOD_ANSWER, 10, "").perform(post("/api/coach/review")
+                        .header("X-App-Key", "anything")
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.reason").value("server_misconfigured"));
+    }
+
+    @Test
+    void invalidRequests_are400WithAReason() throws Exception {
+        MockMvc mvc = mvc((s, p, schema) -> GOOD_ANSWER);
+        // No exercises: breaks @NotEmpty.
+        mvc.perform(post("/api/coach/review").header("X-App-Key", KEY).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"workout\":{\"title\":\"x\",\"date\":\"2026-11-16\",\"durationMinutes\":1},\"exercises\":[]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.reason").value("invalid_request"));
+        // Not JSON at all.
+        mvc.perform(post("/api/coach/review").header("X-App-Key", KEY).contentType(MediaType.APPLICATION_JSON)
+                        .content("not json"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.reason").value("invalid_request"));
+    }
+
+    @Test
+    void ourDailyLimit_andGeminisQuota_are429WithDifferentReasons() throws Exception {
+        mvc((s, p, schema) -> GOOD_ANSWER, 0, KEY).perform(post("/api/coach/review").header("X-App-Key", KEY)
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.reason").value("daily_limit"));
+
+        mvc((s, p, schema) -> { throw new GeminiException("quota", 429); })
+                .perform(post("/api/coach/review").header("X-App-Key", KEY)
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.reason").value("gemini_quota"));
+    }
+
+    @Test
+    void otherGeminiFailures_are502() throws Exception {
+        mvc((s, p, schema) -> { throw new GeminiException("Gemini returned HTTP 500", 500); })
+                .perform(post("/api/coach/review").header("X-App-Key", KEY)
+                        .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.reason").value("gemini_error"));
     }
 }
