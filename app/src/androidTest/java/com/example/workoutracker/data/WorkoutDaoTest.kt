@@ -541,4 +541,24 @@ class WorkoutDaoTest {
         assertEquals(110.0, sessions[1].bestOneRepMaxKg!!, 0.0001) // a single rep = its weight
     }
 
+    @Test
+    fun coachQueries_returnCorrectPreviousAndSummaryFacts() = runBlocking {
+        val bench = newExercise("Bench")
+        val squat = newExercise("Squat")
+
+        newWorkout(1_000L, bench, listOf(50.0 to 10))
+        newWorkout(2_000L, squat, listOf(100.0 to 5))
+        newWorkout(3_000L, bench, listOf(60.0 to 8, 60.0 to 7))
+
+        val currentStart = 4_000L
+
+        assertEquals(3_000L, workoutDao.getPreviousSessionStart(bench, currentStart))
+        assertEquals(2_000L, workoutDao.getPreviousSessionStart(squat, currentStart))
+        assertEquals(listOf(8, 7), workoutDao.getDoneSetsBefore(bench, currentStart).map { it.reps })
+
+        assertEquals(3_000L, workoutDao.getLastFinishedStartBefore(currentStart))
+        assertEquals(3, workoutDao.countFinishedBetween(1_000L, currentStart))
+        assertEquals(2, workoutDao.countFinishedBetween(2_000L, currentStart))
+    }
+
 }

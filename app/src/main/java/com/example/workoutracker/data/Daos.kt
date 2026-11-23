@@ -329,4 +329,56 @@ interface WorkoutDao {
     @Transaction
     @Query("SELECT * FROM workout WHERE endedAt IS NOT NULL ORDER BY startedAt DESC LIMIT 1")
     fun observeLastFinished(): Flow<WorkoutWithDetails?>
+
+    // ---- Coach facts helper queries ----
+
+    @Query(
+        """
+        SELECT w.startedAt FROM workout w
+        JOIN workout_exercise we ON we.workoutId = w.id
+        JOIN workout_set s ON s.workoutExerciseId = we.id
+        WHERE we.exerciseId = :exerciseId
+          AND w.endedAt IS NOT NULL
+          AND w.startedAt < :beforeStartedAt
+          AND s.isDone = 1
+        ORDER BY w.startedAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getPreviousSessionStart(exerciseId: Long, beforeStartedAt: Long): Long?
+
+    @Query(
+        """
+        SELECT s.* FROM workout_set s
+        WHERE s.workoutExerciseId = (
+            SELECT we.id FROM workout_exercise we
+            JOIN workout w ON w.id = we.workoutId
+            WHERE we.exerciseId = :exerciseId
+              AND w.endedAt IS NOT NULL
+              AND w.startedAt < :beforeStartedAt
+              AND EXISTS (SELECT 1 FROM workout_set d WHERE d.workoutExerciseId = we.id AND d.isDone = 1)
+            ORDER BY w.startedAt DESC, we.position ASC
+            LIMIT 1
+        )
+          AND s.isDone = 1
+        ORDER BY s.setIndex
+        """
+    )
+    suspend fun getDoneSetsBefore(exerciseId: Long, beforeStartedAt: Long): List<WorkoutSetEntity>
+
+    @Query(
+        """
+        SELECT MAX(startedAt) FROM workout
+        WHERE endedAt IS NOT NULL AND startedAt < :beforeStartedAt
+        """
+    )
+    suspend fun getLastFinishedStartBefore(beforeStartedAt: Long): Long?
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM workout
+        WHERE endedAt IS NOT NULL AND startedAt >= :fromStartedAt AND startedAt <= :toStartedAt
+        """
+    )
+    suspend fun countFinishedBetween(fromStartedAt: Long, toStartedAt: Long): Int
 }

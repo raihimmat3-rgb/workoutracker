@@ -15,20 +15,27 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         WorkoutExerciseEntity::class,
         WorkoutSetEntity::class,
         TemplateEntity::class,
-        TemplateExerciseEntity::class
+        TemplateExerciseEntity::class,
+        CoachReviewEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,  // writes a schema JSON per version into app/schemas; commit them
     // Version 2 -> 3 only ADDS two tables, so Room can write that migration itself by
     // comparing schemas/2.json with the new schema. (1 -> 2 changed existing data, so it's manual.)
     // 3 -> 4 only adds nullable columns and an index to `workout`, so it's automatic too.
-    autoMigrations = [AutoMigration(from = 2, to = 3), AutoMigration(from = 3, to = 4)]
+    // 4 -> 5 only adds the coach_review table, so Room writes it too.
+    autoMigrations = [
+        AutoMigration(from = 2, to = 3),
+        AutoMigration(from = 3, to = 4),
+        AutoMigration(from = 4, to = 5)
+    ]
 )
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun exerciseDao(): ExerciseDao
     abstract fun workoutDao(): WorkoutDao
     abstract fun templateDao(): TemplateDao
+    abstract fun coachDao(): CoachDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null

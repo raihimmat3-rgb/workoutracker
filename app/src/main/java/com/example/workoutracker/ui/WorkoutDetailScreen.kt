@@ -55,6 +55,7 @@ fun WorkoutDetailScreen(
     viewModel: WorkoutDetailViewModel = viewModel()
 ) {
     val details by viewModel.details.collectAsStateWithLifecycle()
+    val coachState by viewModel.coachState.collectAsStateWithLifecycle()
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var showSaveTemplate by rememberSaveable { mutableStateOf(false) }
 
@@ -98,6 +99,7 @@ fun WorkoutDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item { WorkoutHeader(current) }
+                item { CoachCard(state = coachState, onAsk = viewModel::askCoach) }
                 item {
                     OutlinedButton(onClick = { showSaveTemplate = true }, modifier = Modifier.fillMaxWidth()) {
                         Text("Save as routine")
